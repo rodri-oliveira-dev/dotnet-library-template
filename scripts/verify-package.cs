@@ -2,6 +2,7 @@
 
 using System.IO.Compression;
 using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Xml.Linq;
 
@@ -53,8 +54,35 @@ if (!string.IsNullOrWhiteSpace(expectedVersion))
     AssertEqual(expectedVersion, metadata.Element(ns + "version")?.Value, "Version");
 }
 
-AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.dll");
+var assemblyEntry = packageArchive.GetEntry("lib/net10.0/Template.Library.dll")
+    ?? throw new InvalidOperationException("Assembly principal não encontrado no pacote.");
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.xml");
+
+using var assemblyStream = new MemoryStream();
+using (var entryStream = assemblyEntry.Open())
+{
+    entryStream.CopyTo(assemblyStream);
+}
+
+assemblyStream.Position = 0;
+using var peReader = new PEReader(assemblyStream);
+var assemblyMetadata = peReader.GetMetadataReader();
+var assemblyDefinition = assemblyMetadata.GetAssemblyDefinition();
+var assemblyVersion = assemblyDefinition.Version.ToString();
+var fileVersion = GetAssemblyStringAttribute(
+    assemblyMetadata,
+    "System.Reflection.AssemblyFileVersionAttribute");
+var informationalVersion = GetAssemblyStringAttribute(
+    assemblyMetadata,
+    "System.Reflection.AssemblyInformationalVersionAttribute");
+
+if (!string.IsNullOrWhiteSpace(expectedVersion))
+{
+    var expectedAssemblyVersion = ToAssemblyVersion(expectedVersion);
+    AssertEqual(expectedAssemblyVersion, assemblyVersion, "AssemblyVersion");
+    AssertEqual(expectedAssemblyVersion, fileVersion, "FileVersion");
+    AssertInformationalVersion(expectedVersion, informationalVersion);
+}
 
 var repository = metadata.Element(ns + "repository");
 var repositoryUrl = repository?.Attribute("url")?.Value;
@@ -122,6 +150,9 @@ Console.WriteLine($"Símbolos validados: {Path.GetFileName(snupkg)}");
 if (!string.IsNullOrWhiteSpace(expectedVersion))
 {
     Console.WriteLine($"Versão validada: {expectedVersion}");
+    Console.WriteLine($"AssemblyVersion validada: {assemblyVersion}");
+    Console.WriteLine($"FileVersion validada: {fileVersion}");
+    Console.WriteLine($"InformationalVersion validada: {informationalVersion}");
 }
 
 if (!string.IsNullOrWhiteSpace(repositoryUrl))
@@ -174,4 +205,90 @@ static void AssertNotBlank(string? value, string field)
     {
         throw new InvalidOperationException($"{field} não pode ser vazio.");
     }
+}
+
+static string ToAssemblyVersion(string semVer)
+{
+    var coreVersion = semVer.Split('-', 2)[0];
+    if (!Version.TryParse(coreVersion, out var parsed) || parsed.Build < 0)
+    {
+        throw new InvalidOperationException($"Versão SemVer inválida para metadata de assembly: {semVer}");
+    }
+
+    return new Version(parsed.Major, parsed.Minor, parsed.Build, 0).ToString();
+}
+
+static void AssertInformationalVersion(string expectedVersion, string? actual)
+{
+    AssertNotBlank(actual, "InformationalVersion");
+
+    if (!actual!.StartsWith(expectedVersion, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException(
+            $"InformationalVersion: esperado prefixo '{expectedVersion}', obtido '{actual}'.");
+    }
+
+    var suffix = actual[expectedVersion.Length..];
+    if (suffix.Length > 0 && !suffix.StartsWith('+'))
+    {
+        throw new InvalidOperationException(
+            $"InformationalVersion: sufixo inesperado após '{expectedVersion}': '{suffix}'.");
+    }
+}
+
+static string? GetAssemblyStringAttribute(MetadataReader reader, string expectedTypeName)
+{
+    var assembly = reader.GetAssemblyDefinition();
+
+    foreach (var handle in assembly.GetCustomAttributes())
+    {
+        var attribute = reader.GetCustomAttribute(handle);
+        if (!string.Equals(GetAttributeTypeName(reader, attribute), expectedTypeName, StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        var valueReader = reader.GetBlobReader(attribute.Value);
+        if (valueReader.ReadUInt16() != 1)
+        {
+            throw new InvalidOperationException($"Formato inválido do atributo {expectedTypeName}.");
+        }
+
+        return valueReader.ReadSerializedString();
+    }
+
+    return null;
+}
+
+static string? GetAttributeTypeName(MetadataReader reader, CustomAttribute attribute)
+{
+    EntityHandle typeHandle = attribute.Constructor.Kind switch
+    {
+        HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)attribute.Constructor).Parent,
+        HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)attribute.Constructor).GetDeclaringType(),
+        _ => default
+    };
+
+    return typeHandle.Kind switch
+    {
+        HandleKind.TypeReference => GetTypeReferenceName(reader, (TypeReferenceHandle)typeHandle),
+        HandleKind.TypeDefinition => GetTypeDefinitionName(reader, (TypeDefinitionHandle)typeHandle),
+        _ => null
+    };
+}
+
+static string GetTypeReferenceName(MetadataReader reader, TypeReferenceHandle handle)
+{
+    var type = reader.GetTypeReference(handle);
+    var ns = reader.GetString(type.Namespace);
+    var name = reader.GetString(type.Name);
+    return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
+}
+
+static string GetTypeDefinitionName(MetadataReader reader, TypeDefinitionHandle handle)
+{
+    var type = reader.GetTypeDefinition(handle);
+    var ns = reader.GetString(type.Namespace);
+    var name = reader.GetString(type.Name);
+    return string.IsNullOrEmpty(ns) ? name : $"{ns}.{name}";
 }

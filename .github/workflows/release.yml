@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to validate (for example v1.2.3 or v1.2.3-beta.1)'
+        description: 'Version to validate (for example v1.0.0 or v1.1.0-beta.1)'
         required: true
         type: string
 
@@ -97,6 +97,28 @@ jobs:
           echo "package_id=$package_id" >> "$GITHUB_OUTPUT"
           echo "safe_to_publish=$safe_to_publish" >> "$GITHUB_OUTPUT"
 
+      - name: Validate resolved MSBuild version
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: |
+          project='src/Template.Library/Template.Library.csproj'
+
+          resolved_version="$(dotnet msbuild "$project" -nologo -getProperty:Version -p:Version="$PACKAGE_VERSION" \
+            | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)"
+          resolved_package_version="$(dotnet msbuild "$project" -nologo -getProperty:PackageVersion -p:Version="$PACKAGE_VERSION" \
+            | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)"
+
+          if [ "$resolved_version" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Resolved Version '$resolved_version' differs from release version '$PACKAGE_VERSION'."
+            exit 1
+          fi
+
+          if [ "$resolved_package_version" != "$PACKAGE_VERSION" ]; then
+            echo "::error::Resolved PackageVersion '$resolved_package_version' differs from release version '$PACKAGE_VERSION'."
+            exit 1
+          fi
+
       - name: Build Release
         env:
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
@@ -105,7 +127,6 @@ jobs:
           --configuration Release
           --no-restore
           -p:Version="$PACKAGE_VERSION"
-          -p:PackageVersion="$PACKAGE_VERSION"
 
       - name: Run tests
         run: dotnet test Template.Library.slnx --configuration Release --no-build
@@ -119,9 +140,8 @@ jobs:
           --no-build
           --output artifacts/packages
           -p:Version="$PACKAGE_VERSION"
-          -p:PackageVersion="$PACKAGE_VERSION"
 
-      - name: Validate package, version, symbols and Source Link
+      - name: Validate package, version, assembly metadata, symbols and Source Link
         env:
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
         run: >-
