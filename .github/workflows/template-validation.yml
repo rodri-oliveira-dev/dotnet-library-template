@@ -151,6 +151,33 @@ jobs:
             exit 1
           fi
 
+      - name: Verificar configuração do CodeQL no checkout
+        shell: bash
+        run: |
+          file=".github/workflows/codeql.yml"
+
+          if [ ! -s "$file" ]; then
+            echo "Workflow CodeQL ausente ou vazio."
+            exit 1
+          fi
+
+          grep -Fq 'pull_request:' "$file"
+          grep -Fq 'push:' "$file"
+          grep -Fq 'schedule:' "$file"
+          grep -Fq 'contents: read' "$file"
+          grep -Fq 'security-events: write' "$file"
+          grep -Fq 'github/codeql-action/init@v4' "$file"
+          grep -Fq 'github/codeql-action/analyze@v4' "$file"
+          grep -Fq 'languages: csharp' "$file"
+          grep -Fq 'build-mode: manual' "$file"
+          grep -Fq 'dotnet restore Template.Library.slnx --locked-mode' "$file"
+          grep -Fq 'dotnet build Template.Library.slnx --configuration Release --no-restore' "$file"
+
+          if grep -Eq 'write-all|secrets\.|github/codeql-action/autobuild|packages: write|contents: write' "$file"; then
+            echo "Workflow CodeQL contém permissão, secret ou autobuild não permitido pela baseline."
+            exit 1
+          fi
+
       - name: Instalar template do checkout
         run: dotnet new install .
 
@@ -197,6 +224,7 @@ jobs:
             ".github/pull_request_template.md"
             ".github/dependabot.yml"
             ".github/workflows/ci.yml"
+            ".github/workflows/codeql.yml"
             "scripts/verify-package.cs"
           )
 
@@ -235,6 +263,12 @@ jobs:
           grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
           grep -Fq 'actions/upload-artifact@v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'github/codeql-action/init@v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'github/codeql-action/analyze@v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'build-mode: manual' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
 
       - name: Inicializar contexto Git da saída
         shell: bash

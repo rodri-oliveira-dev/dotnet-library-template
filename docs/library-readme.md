@@ -1,6 +1,6 @@
 # Template.Library
 
-Reusable .NET 10 class library with a production-ready baseline for build, tests, dependency management, packaging, and repository governance.
+Reusable .NET 10 class library with a production-ready baseline for build, tests, dependency management, packaging, security analysis, and repository governance.
 
 ## Requirements
 
@@ -74,6 +74,14 @@ The verifier checks package identity, metadata, XML documentation, symbols, repo
 
 The workflow uses read-only repository permissions and cancels superseded runs for the same Git ref.
 
+## Security analysis
+
+`.github/workflows/codeql.yml` runs GitHub CodeQL for C# on pull requests to `main`, pushes to `main`, and a weekly schedule. It uses CodeQL Action v4 with a manual build so the analysis follows the same reproducible .NET 10 restore/build contract as the repository baseline.
+
+The workflow grants only `contents: read` and `security-events: write`, does not use custom secrets, and keeps CodeQL separate from the main CI so static analysis does not duplicate tests, coverage, or packaging.
+
+For public repositories on GitHub.com, completed analyses are available through the repository code-scanning security view when the feature is available for the repository.
+
 ## Repository structure
 
 ```text
@@ -82,7 +90,8 @@ The workflow uses read-only repository permissions and cancels superseded runs f
 │   └── dotnet-tools.json
 ├── .github/
 │   └── workflows/
-│       └── ci.yml
+│       ├── ci.yml
+│       └── codeql.yml
 ├── scripts/
 │   └── verify-package.cs
 ├── src/

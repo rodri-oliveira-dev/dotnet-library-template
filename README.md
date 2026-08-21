@@ -1,6 +1,6 @@
 # .NET Library Template
 
-Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI e governança.
+Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança e governança.
 
 O repositório pode ser usado de duas formas:
 
@@ -24,7 +24,7 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - `.nupkg`, `.snupkg`, documentação XML e Source Link;
 - validação do pacote em um consumidor temporário;
 - licença MIT, contribuição, Code of Conduct e changelog;
-- GitHub Actions para CI do repositório-base e validação end-to-end do custom template;
+- GitHub Actions para CI, análise CodeQL e validação end-to-end do custom template;
 - artefatos de cobertura Cobertura e pacotes NuGet publicados pelo CI para diagnóstico.
 
 O template permanece deliberadamente genérico: não inclui ASP.NET Core, banco de dados, ORM, logging específico, Testcontainers de infraestrutura, BenchmarkDotNet ou outras dependências sem um caso de uso comum e comprovado.
@@ -59,7 +59,7 @@ Antes de publicar ou liberar a biblioteca:
 - configure branch protection ou rulesets para `main`;
 - revise as permissões padrão do GitHub Actions;
 - configure environments quando houver deploy/publicação protegida;
-- habilite os recursos de segurança apropriados, como Dependabot alerts, code scanning, secret scanning e push protection quando disponíveis.
+- confirme a disponibilidade do code scanning e revise os recursos de segurança apropriados, como Dependabot alerts, secret scanning e push protection quando disponíveis.
 
 **Secrets, environments, rulesets, branch protection, permissões administrativas do Actions e demais settings do repositório não são copiados por um GitHub Template Repository.**
 
@@ -135,6 +135,12 @@ No .NET 10, Source Link para GitHub é fornecido pelo SDK para projetos SDK-styl
 
 O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório e commit são derivados do contexto de Git/build. Isso impede que uma biblioteca gerada publique por engano a URL do repositório-base.
 
+## Análise de segurança com CodeQL
+
+`.github/workflows/codeql.yml` executa análise CodeQL para C# em pull requests para `main`, pushes em `main` e uma agenda semanal. A baseline usa CodeQL Action v4 com `build-mode: manual`, restaurando dependências em `--locked-mode` e compilando em Release para que a análise observe o mesmo contrato de build reproduzível do projeto.
+
+O workflow mantém permissões mínimas (`contents: read` e `security-events: write`), não usa secrets customizados e permanece separado do CI principal para não duplicar testes, cobertura e empacotamento.
+
 ## Estrutura resumida
 
 ```text
@@ -144,6 +150,7 @@ O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório 
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
+│       ├── codeql.yml
 │       └── template-validation.yml
 ├── .template.config/
 │   └── template.json
@@ -169,7 +176,7 @@ O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório 
 
 ## O que entra no projeto gerado por `dotnet new`
 
-A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflow principal de CI e tooling de pacote.
+A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI e CodeQL e tooling de pacote.
 
 Conteúdo usado apenas para manter o template é excluído da saída:
 
@@ -184,12 +191,13 @@ A cópia feita pelo botão **Use this template** é diferente: como o GitHub nã
 
 ## Validação automática
 
-Dois fluxos possuem responsabilidades diferentes:
+Três workflows possuem responsabilidades diferentes:
 
 - `.github/workflows/ci.yml` é o CI principal: tooling, locked restore, políticas de build, CPM, format, build, testes, cobertura Cobertura, packaging, Source Link, consumo do pacote, governança e limpeza da árvore. O workflow também publica os artefatos `coverage` e `nuget-packages` e cancela execuções antigas do mesmo ref;
-- `.github/workflows/template-validation.yml` instala o checkout como custom template, gera `Validation.SampleLibrary` e prova que a saída possui paths corretos, lock files, build/test/pack funcionais, PackageId parametrizado e ausência de resíduos de `Template.Library` ou projetos usados como referência.
+- `.github/workflows/codeql.yml` faz análise estática de segurança do código C# com build manual reproduzível e envia os resultados para code scanning;
+- `.github/workflows/template-validation.yml` instala o checkout como custom template, gera `Validation.SampleLibrary` e prova que a saída possui paths corretos, lock files, workflows esperados, build/test/pack funcionais, PackageId parametrizado e ausência de resíduos de `Template.Library` ou projetos usados como referência.
 
-Separar os workflows torna uma regressão do template engine distinguível de uma regressão na própria baseline.
+Separar os workflows torna regressões de CI, segurança e template engine distinguíveis no GitHub Actions.
 
 ## Convenção `Template.Library`
 
