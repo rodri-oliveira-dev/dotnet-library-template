@@ -74,6 +74,7 @@ Current design examples:
 - the release tag gate adds `contents: write` only to the job that creates/verifies the release tag;
 - NuGet Trusted Publishing adds `id-token: write` only to the NuGet publishing path;
 - GitHub Release creation adds `contents: write` only to the GitHub Release job.
+- read-only checkout steps disable Git credential persistence; the release tag gate is the intentional exception.
 
 ### Verification
 
@@ -146,6 +147,7 @@ The repository also keeps defense in depth through versioned automation:
 - Dependency Review blocks newly introduced High/Critical vulnerable dependencies in pull requests;
 - CodeQL scans C# on pull requests, pushes to `main`, and on its scheduled run;
 - Dependabot version updates are configured for NuGet and GitHub Actions.
+- eligible GitHub Actions are pinned by full commit SHA with version comments, and Dependabot monitors those references.
 
 Versioned workflows do not replace repository-side security settings where GitHub requires an administrative switch.
 

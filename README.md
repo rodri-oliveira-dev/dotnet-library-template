@@ -31,7 +31,9 @@ Para a maioria dos novos projetos, prefira **`dotnet new`**.
 - solução no formato `.slnx`;
 - nullable reference types e implicit usings;
 - warnings tratados como erros;
+- baseline de analyzers do SDK em `10-recommended`, analyzers de segurança em `10-all` e code style participando do build;
 - build determinístico;
+- SDK reproduzível por `global.json` com roll-forward sustentável dentro do .NET 10;
 - Central Package Management em `Directory.Packages.props`;
 - `packages.lock.json` e restore com `--locked-mode`;
 - NuGet Audit com falha para vulnerabilidades High/Critical.
@@ -43,6 +45,7 @@ Para a maioria dos novos projetos, prefira **`dotnet new`**.
 - NSubstitute;
 - cobertura com Coverlet MTP;
 - `dotnet format` no CI;
+- regras de confiabilidade e performance de baixo ruído aplicadas ao código de produção sem bloquear testes por detalhes internos;
 - SonarQube Cloud opcional;
 - validação do pacote em um consumidor temporário.
 
@@ -50,7 +53,9 @@ Para a maioria dos novos projetos, prefira **`dotnet new`**.
 
 - `.nupkg` e `.snupkg`;
 - documentação XML;
+- README incluído no pacote NuGet;
 - PDB portátil e Source Link;
+- Package Validation nativo do SDK durante `dotnet pack`;
 - Semantic Versioning;
 - versão base centralizada em `Directory.Build.props`;
 - validação da versão do pacote e da metadata do assembly;
@@ -67,10 +72,11 @@ Para a maioria dos novos projetos, prefira **`dotnet new`**.
 - licença MIT;
 - `CONTRIBUTING.md`;
 - `CODE_OF_CONDUCT.md`;
+- `SECURITY.md`;
 - `CHANGELOG.md`;
-- workflows com permissões mínimas explícitas.
+- workflows com permissões mínimas explícitas, actions pinadas por SHA e checkouts somente-leitura sem persistência de credenciais.
 
-O template é deliberadamente genérico. Ele não inclui ASP.NET Core, banco de dados, ORM, logging específico, Testcontainers de infraestrutura, BenchmarkDotNet ou outras dependências sem um caso de uso comum e comprovado.
+O template é deliberadamente genérico. Ele não inclui ASP.NET Core, banco de dados, ORM, logging específico, Testcontainers de infraestrutura, BenchmarkDotNet, tuning de runtime, Server GC, ReadyToRun ou outras dependências sem um caso de uso comum e comprovado. Compatibilidade com trimming ou Native AOT deve ser habilitada por cada biblioteca somente quando fizer parte do contrato real do pacote.
 
 ## Pré-requisitos
 
@@ -156,6 +162,7 @@ A baseline administrativa recomendada está documentada em [docs/repository-admi
 A partir da raiz deste repositório:
 
 ```bash
+dotnet --version
 dotnet tool restore
 dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
@@ -347,6 +354,7 @@ Conteúdo específico de manutenção do template é excluído, incluindo:
 ├── LICENSE
 ├── README.md
 ├── README.en.md
+├── SECURITY.md
 ├── Template.Library.slnx
 └── global.json
 ```
@@ -358,6 +366,7 @@ Conteúdo específico de manutenção do template é excluído, incluindo:
 - [Repository administration](docs/repository-administration.md): baseline de settings administrativos no GitHub;
 - [Generated library README](docs/library-readme.md): README usado em projetos criados por `dotnet new`;
 - [CONTRIBUTING.md](CONTRIBUTING.md): processo de contribuição e breaking changes;
+- [SECURITY.md](SECURITY.md): política de reporte e triagem de vulnerabilidades;
 - [CHANGELOG.md](CHANGELOG.md): histórico de mudanças relevantes;
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): padrões de participação.
 

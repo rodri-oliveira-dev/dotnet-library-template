@@ -3,7 +3,9 @@
     <TargetFramework>net10.0</TargetFramework>
 
     <IsPackable>true</IsPackable>
+    <EnablePackageValidation>true</EnablePackageValidation>
     <PackageId>Template.Library</PackageId>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>TODO: Describe the library before publishing.</Description>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -13,4 +15,8 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 </Project>

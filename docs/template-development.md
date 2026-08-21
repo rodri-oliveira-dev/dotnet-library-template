@@ -26,13 +26,14 @@ The stable identifiers are:
 - short name: `rodri-lib`;
 - source name: `Template.Library`;
 - target framework baseline: `net10.0`;
+- SDK feature band: `10.0.303` with `latestFeature` roll-forward;
 - base development version: `1.0.0`.
 
 Keep the parameter surface intentionally small. Add a new parameter only when there is a concrete reusable need and an automated generation test for it.
 
 ## Generated content versus maintenance-only content
 
-Most versioned files belong in generated libraries: source, tests, shared build/version policies, Central Package Management, package lock files, governance files, CI/security/quality/release workflows, local tool manifests, agent instructions, release helper scripts, and package verification tooling.
+Most versioned files belong in generated libraries: source, tests, shared build/version policies, Central Package Management, package lock files, governance files, `SECURITY.md`, CI/security/quality/release workflows, local tool manifests, agent instructions, release helper scripts, and package verification tooling.
 
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
@@ -66,6 +67,7 @@ After changing includes, excludes, renames, reusable workflows, or release helpe
 From a clean checkout:
 
 ```bash
+dotnet --version
 dotnet tool restore
 dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
@@ -86,6 +88,33 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages \
 `.github/workflows/codeql.yml` is intentionally separate from CI. It initializes CodeQL for C# with `build-mode: manual`, restores dependencies in locked mode, builds the Release solution, and uploads analysis results with only `contents: read` and `security-events: write` permissions.
 
 `.github/workflows/dependency-review.yml` reviews only dependency deltas introduced by pull requests and blocks new High/Critical known vulnerabilities.
+
+## Analyzer, SDK and packaging baseline
+
+`Directory.Build.props`, `.editorconfig`, `global.json`, and the packable library project jointly define the reusable engineering baseline. Generated projects must keep:
+
+- `AnalysisLevel=10-recommended`;
+- `AnalysisLevelSecurity=10-all`;
+- `EnforceCodeStyleInBuild=true`;
+- `EnablePackageValidation=true` on the packable library;
+- `global.json` pinned to the .NET 10 SDK feature band with `rollForward=latestFeature`;
+- Microsoft Testing Platform selection under the `test` section of `global.json`.
+
+Production-only reliability and performance rules belong under `[src/**/*.cs]` in `.editorconfig`. Keep `CA1859` as a suggestion so the template does not force concrete implementation types into public API decisions for micro-optimization reasons.
+
+Do not enable trimming or Native AOT package properties globally. Those properties are compatibility promises and should be added only by a concrete library that has validated that contract.
+
+## GitHub Actions hardening
+
+Reusable workflows must pin eligible actions by full commit SHA and keep a nearby version comment, for example:
+
+```yaml
+uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+```
+
+Read-only checkouts should set `persist-credentials: false`. The release tag job is the intentional exception because it must create or verify a Git tag using the workflow token.
+
+Dependabot remains configured for the `github-actions` ecosystem so it can propose version-comment/SHA updates.
 
 ## Optional SonarQube Cloud workflow
 
