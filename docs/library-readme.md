@@ -77,7 +77,7 @@ The library uses Semantic Versioning and has a single version source for normal 
 
 That property lives in `Directory.Build.props`. Do not duplicate `<Version>`, `<VersionPrefix>`, or `<PackageVersion>` across individual `.csproj` files.
 
-With no release override, build and pack resolve version **1.0.0**. For a published release, the Git tag becomes the source of truth and `.github/workflows/release.yml` passes the tag-derived value through the single MSBuild `Version` property:
+With no release override, build and pack resolve version **1.0.0**. For a release, the Git tag becomes the source of truth and `.github/workflows/release.yml` passes the tag-derived value through the single MSBuild `Version` property:
 
 ```text
 v1.0.0          -> Version 1.0.0
@@ -99,10 +99,10 @@ A release never requires editing the same version in multiple files. The workflo
 ```bash
 dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --require-source-link \
-  --expected-version <version-from-tag>
+  --expected-version <release-version>
 ```
 
-Any mismatch fails before NuGet authentication/publication or GitHub Release creation.
+Any mismatch fails before the release tag is created or any external publication occurs.
 
 Before cutting a stable release, move relevant entries from the `Unreleased` section of `CHANGELOG.md` into the corresponding release section when applicable. The changelog is intentionally not rewritten automatically by the workflow.
 
@@ -161,45 +161,85 @@ Repository secrets and Repository Variables are administrative settings and are 
 
 ## Release and NuGet publishing
 
-`.github/workflows/release.yml` provides the release path for generated libraries.
+`.github/workflows/release.yml` provides the release path for generated libraries. There are two supported entry points.
 
-A push of a tag such as:
+### Recommended: run the Release workflow manually
+
+1. Open the repository **Actions** tab.
+2. Select the **Release** workflow.
+3. Click **Run workflow**.
+4. Select branch **main**.
+5. Enter **Release version**, for example `v1.0.0` or `v1.1.0-beta.1`.
+6. Start the workflow.
+
+The workflow rejects manual releases from any ref other than the `main` branch and fails early if the requested tag already exists. It then restores dependencies in locked mode, resolves the requested version through MSBuild, builds, tests, packs, and validates package and assembly metadata.
+
+Only after all validation succeeds does the workflow create the requested Git tag. The tag points exactly to the commit SHA validated by that workflow run. NuGet publication and GitHub Release creation happen only after this tag gate succeeds.
+
+### Alternative: push an existing release tag
+
+The traditional flow remains supported:
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-always validates the SemVer tag, restores dependencies in locked mode, resolves the same version through MSBuild, builds, tests, packs, and validates package and assembly metadata.
+For a tag-triggered execution, the workflow validates the package and verifies that the incoming tag resolves to the same commit SHA before publishing anything.
 
-NuGet.org publication is explicitly **opt-in through the `NUGET_USER` repository variable**. The workflow resolves a single `nuget-publishing-enabled` gate from three conditions:
+### NuGet publication opt-in
+
+NuGet.org publication is explicitly **opt-in through the `NUGET_USER` Repository Variable**. The workflow enables NuGet publication only when:
 
 ```text
-real tag release
+valid release
 AND publishable package identity
 AND NUGET_USER is configured and non-empty
 ```
 
-When that gate is true, the workflow exchanges a GitHub OIDC token through `NuGet/login@v1`, publishes the `.nupkg`/`.snupkg` to NuGet.org, and then creates the GitHub Release with those artifacts.
+When the gate is true, the workflow exchanges a GitHub OIDC token through `NuGet/login@v1`, publishes the `.nupkg`/`.snupkg` to NuGet.org, and creates the GitHub Release after publication succeeds.
 
-When `NUGET_USER` is absent, empty, or contains only whitespace, the validation/build/test/pack path still completes, but NuGet publication is disabled. In that case the workflow does **not** start `NuGet/login@v1`, does not request a publication credential, and does not execute `dotnet nuget push`. For a real package, the package-backed GitHub Release is also skipped so a partially completed release is not created.
+When `NUGET_USER` is absent, empty, or contains only whitespace, the release still succeeds: the workflow does **not** start `NuGet/login@v1`, does not request a publication credential, and does not execute `dotnet nuget push`. The Git tag and GitHub Release are still created. For a real package, the `.nupkg` and `.snupkg` artifacts are attached to the GitHub Release even though they were not published to NuGet.org.
 
-Manual `workflow_dispatch` runs are **dry-run only**: they require an explicit version such as `v1.0.0` or `v1.1.0-beta.1` but never publish to NuGet.org or create a GitHub Release, regardless of `NUGET_USER`.
+### Configure `NUGET_USER` in GitHub
+
+`NUGET_USER` is a **Repository Variable**, not a Repository Secret. If it does not exist yet:
+
+1. Open the repository on GitHub.
+2. Go to **Settings**.
+3. Open **Secrets and variables** → **Actions**.
+4. Select the **Variables** tab.
+5. Click **New repository variable**.
+6. Set **Name** to:
+
+   ```text
+   NUGET_USER
+   ```
+
+7. Set **Value** to the nuget.org profile name/username that owns or publishes the package and is referenced by the Trusted Publishing setup.
+8. Save the variable.
+
+If you do not want this repository to publish to NuGet.org, simply leave `NUGET_USER` undefined. No dummy value is required.
 
 ### Configure NuGet.org Trusted Publishing
 
 The workflow uses NuGet.org **Trusted Publishing** with GitHub OIDC instead of storing a long-lived `NUGET_API_KEY`.
 
-To enable real NuGet publication:
+To enable NuGet publication:
 
-1. Sign in to nuget.org and create a Trusted Publishing policy for this repository.
-2. Set the policy workflow file to `release.yml`.
-3. Add a GitHub repository variable named `NUGET_USER` containing the nuget.org profile name that owns/publishes the package.
-4. Ensure the package ID and package metadata are correct before creating the release tag.
+1. Sign in to nuget.org and create a Trusted Publishing policy for this GitHub repository.
+2. Set the policy workflow file to:
 
-`NUGET_USER` is both the nuget.org profile name used by Trusted Publishing and the explicit publication-enablement flag. A repository can use the full build/test/pack/release-validation baseline without defining it.
+   ```text
+   .github/workflows/release.yml
+   ```
 
-If NuGet authentication or publication fails after publication has been enabled, the GitHub Release job does not run, preventing a partially completed release.
+3. Configure the GitHub Repository Variable `NUGET_USER` using the steps above.
+4. Ensure the package ID and package metadata are correct before starting the release.
+
+`NUGET_USER` is both the nuget.org profile name used by Trusted Publishing and the explicit NuGet publication-enablement flag. A repository can use the full tag and GitHub Release automation without defining it.
+
+If NuGet authentication or publication fails after publication has been enabled, the GitHub Release job does not run, preventing the repository from advertising a NuGet publication that did not complete.
 
 ## Repository structure
 
@@ -215,7 +255,9 @@ If NuGet authentication or publication fails after publication has been enabled,
 │       ├── release.yml
 │       └── sonar.yml
 ├── scripts/
+│   ├── ensure-release-tag.sh
 │   ├── resolve-nuget-publishing.sh
+│   ├── resolve-release-request.sh
 │   └── verify-package.cs
 ├── src/
 │   └── Template.Library/
@@ -235,8 +277,8 @@ If NuGet authentication or publication fails after publication has been enabled,
 
 Repository-level settings are not stored in Git, so they are not automatically recreated when this project is copied or generated. Review the target repository settings and configure what your project needs, especially:
 
-- the NuGet.org Trusted Publishing policy for `release.yml` if NuGet publication is desired;
-- the `NUGET_USER` repository variable to opt in to NuGet publication;
+- the NuGet.org Trusted Publishing policy for `.github/workflows/release.yml` if NuGet publication is desired;
+- the `NUGET_USER` Repository Variable under **Settings → Secrets and variables → Actions → Variables** to opt in to NuGet publication;
 - optional SonarQube Cloud secret `SONAR_TOKEN` and any `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION`, or `SONAR_HOST_URL` overrides;
 - branch protection or rulesets;
 - environments and deployment protection rules, if your project adds them;
