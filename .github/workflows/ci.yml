@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -230,40 +229,3 @@ jobs:
             echo "$status"
             exit 1
           fi
-
-      - name: Limpar runs de workflows temporários legados
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/52-nuget-user-publishing-flag' }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          legacy_workflows="$(
-            gh api --paginate "/repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
-              --jq '.workflows[] | select(.name | test("^Issue (11|12|13|14|15)( |$)")) | [.id, .name] | @tsv'
-          )"
-
-          if [ -z "$legacy_workflows" ]; then
-            echo 'Nenhum workflow temporário legado encontrado.'
-            exit 0
-          fi
-
-          while IFS=$'\t' read -r workflow_id workflow_name; do
-            [ -n "$workflow_id" ] || continue
-            echo "Limpando histórico de: $workflow_name ($workflow_id)"
-
-            run_ids="$(
-              gh api --paginate "/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_id/runs?per_page=100" \
-                --jq '.workflow_runs[] | select(.status == "completed") | .id'
-            )"
-
-            if [ -z "$run_ids" ]; then
-              echo '  Nenhum run concluído encontrado.'
-              continue
-            fi
-
-            while IFS= read -r run_id; do
-              [ -n "$run_id" ] || continue
-              echo "  Excluindo run $run_id"
-              gh api --method DELETE "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id"
-            done <<< "$run_ids"
-          done <<< "$legacy_workflows"
