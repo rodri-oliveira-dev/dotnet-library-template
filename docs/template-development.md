@@ -12,7 +12,7 @@ For example:
 dotnet new rodri-lib -n Example.MyLibrary
 ```
 
-The replacement applies to matching file names, directory names, and file contents, including the solution, project files, namespaces, project references, package metadata, tests, and the package verification script.
+The replacement applies to matching file names, directory names, and file contents, including the solution, project files, namespaces, project references, package metadata, tests, workflows, and the package verification script.
 
 Do not replace `Template.Library` in the source repository with a product-specific name. Add new occurrences only when they represent identity that should follow the generated library name.
 
@@ -31,7 +31,7 @@ Keep the parameter surface intentionally small. Add a new parameter only when th
 
 ## Generated content versus maintenance-only content
 
-Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, the main CI workflow, and package verification tooling.
+Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, the main CI workflow, the CodeQL security workflow, and package verification tooling.
 
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
@@ -54,7 +54,7 @@ When adding a file, decide which category it belongs to:
 
 Do not globally exclude `packages.lock.json`. The generated project is expected to support `dotnet restore --locked-mode` immediately.
 
-After changing includes, excludes, or renames, run the generation validation before opening a pull request.
+After changing includes, excludes, renames, or reusable workflows, run the generation validation before opening a pull request.
 
 ## Validate the source repository
 
@@ -75,6 +75,8 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-sour
 ```
 
 `.github/workflows/ci.yml` performs the equivalent baseline checks automatically. It also publishes a Cobertura report as the `coverage` artifact and the generated `.nupkg`/`.snupkg` files as the `nuget-packages` artifact. The strict Source Link option is appropriate here because the source template is expected to be built from a real Git checkout with repository metadata.
+
+`.github/workflows/codeql.yml` is intentionally separate from CI. It initializes CodeQL for C# with `build-mode: manual`, restores dependencies in locked mode, builds the Release solution, and uploads analysis results with only `contents: read` and `security-events: write` permissions.
 
 ## Install the template locally
 
@@ -137,9 +139,9 @@ A valid generated project must not contain unintended matches.
 
 ## Automated generation test
 
-`.github/workflows/template-validation.yml` automates the development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
+`.github/workflows/template-validation.yml` automates the development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, confirms that reusable CI/security workflows are present and parametrized, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
 
-The workflow is intentionally separate from `.github/workflows/ci.yml` so failures in the source baseline and failures in template generation are distinguishable in GitHub Actions.
+The workflow is intentionally separate from `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` so failures in the source baseline, security analysis, and template generation remain distinguishable in GitHub Actions.
 
 ## Reinstall after template changes
 
@@ -170,4 +172,4 @@ The automated workflow also attempts to uninstall the template at the end so the
 
 ## Documentation checks
 
-When commands, paths, generated content, repository settings, or template exclusions change, update both the root README and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.
+When commands, paths, generated content, repository settings, workflows, or template exclusions change, update both the root README and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.
