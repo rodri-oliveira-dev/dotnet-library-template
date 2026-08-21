@@ -1,0 +1,220 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to validate (for example v1.2.3 or v1.2.3-beta.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-pack:
+    name: Validate, build, test and pack
+    runs-on: ubuntu-latest
+    outputs:
+      package-version: ${{ steps.version.outputs.package_version }}
+      release-tag: ${{ steps.version.outputs.release_tag }}
+      should-publish: ${{ steps.version.outputs.should_publish }}
+      safe-to-publish: ${{ steps.package.outputs.safe_to_publish }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate release version
+        id: version
+        shell: bash
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            release_tag="$MANUAL_VERSION"
+            should_publish=false
+          else
+            release_tag="$GITHUB_REF_NAME"
+            should_publish=true
+          fi
+
+          semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+
+          if [[ ! "$release_tag" =~ $semver_regex ]]; then
+            echo "::error::Release version '$release_tag' must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
+            exit 1
+          fi
+
+          package_version="${release_tag#v}"
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Restore dependencies in locked mode
+        run: dotnet restore Template.Library.slnx --locked-mode
+
+      - name: Validate package identity for publication
+        id: package
+        shell: bash
+        run: |
+          project='src/Template.Library/Template.Library.csproj'
+          package_id="$(dotnet msbuild "$project" -nologo -getProperty:PackageId \
+            | tr -d '\r' \
+            | sed '/^[[:space:]]*$/d' \
+            | tail -n 1)"
+
+          if [ -z "$package_id" ]; then
+            echo '::error::PackageId could not be resolved.'
+            exit 1
+          fi
+
+          placeholder_package_id="Template"".""Library"
+          safe_to_publish=true
+
+          if [ "$package_id" = "$placeholder_package_id" ]; then
+            safe_to_publish=false
+            echo 'Source-template package identity detected. External publication will be skipped.'
+          fi
+
+          echo "package_id=$package_id" >> "$GITHUB_OUTPUT"
+          echo "safe_to_publish=$safe_to_publish" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet build Template.Library.slnx
+          --configuration Release
+          --no-restore
+          -p:Version="$PACKAGE_VERSION"
+          -p:PackageVersion="$PACKAGE_VERSION"
+
+      - name: Run tests
+        run: dotnet test Template.Library.slnx --configuration Release --no-build
+
+      - name: Pack release artifacts
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet pack src/Template.Library/Template.Library.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+          -p:Version="$PACKAGE_VERSION"
+          -p:PackageVersion="$PACKAGE_VERSION"
+
+      - name: Validate package, version, symbols and Source Link
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet run --file scripts/verify-package.cs -- artifacts/packages
+          --require-source-link
+          --expected-version "$PACKAGE_VERSION"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-nuget:
+    name: Publish to NuGet.org
+    needs: build-and-pack
+    if: >-
+      needs.build-and-pack.outputs.should-publish == 'true' &&
+      needs.build-and-pack.outputs.safe-to-publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-packages
+          path: artifacts/packages
+
+      - name: Validate NuGet trusted-publishing configuration
+        shell: bash
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo '::error::Configure the repository variable NUGET_USER with the nuget.org profile name used by the trusted-publishing policy.'
+            exit 1
+          fi
+
+      - name: Exchange GitHub OIDC token for temporary NuGet API key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish package and symbols
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: >-
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key "$NUGET_API_KEY"
+          --skip-duplicate
+
+  github-release:
+    name: Create GitHub Release
+    needs:
+      - build-and-pack
+      - publish-nuget
+    if: >-
+      needs.build-and-pack.outputs.should-publish == 'true' &&
+      needs.build-and-pack.outputs.safe-to-publish == 'true' &&
+      needs.publish-nuget.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: release-packages
+          path: artifacts/packages
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          artifacts/packages/*.nupkg
+          artifacts/packages/*.snupkg
+          --verify-tag
+          --generate-notes
+          --title "$RELEASE_TAG"

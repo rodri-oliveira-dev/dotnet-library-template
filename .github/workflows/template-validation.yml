@@ -178,6 +178,34 @@ jobs:
             exit 1
           fi
 
+      - name: Verificar workflows de dependências e release no checkout
+        shell: bash
+        run: |
+          dependency_review='.github/workflows/dependency-review.yml'
+          release='.github/workflows/release.yml'
+
+          test -s "$dependency_review"
+          grep -Fq 'actions/dependency-review-action@v5' "$dependency_review"
+          grep -Fq 'fail-on-severity: high' "$dependency_review"
+          grep -Fq 'contents: read' "$dependency_review"
+
+          test -s "$release"
+          grep -Fq 'workflow_dispatch:' "$release"
+          grep -Fq 'NuGet/login@v1' "$release"
+          grep -Fq 'actions/upload-artifact@v7' "$release"
+          grep -Fq 'actions/download-artifact@v8' "$release"
+          grep -Fq 'id-token: write' "$release"
+          grep -Fq 'contents: write' "$release"
+          grep -Fq 'safe-to-publish' "$release"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$release"
+          grep -Fq 'vars.NUGET_USER' "$release"
+          grep -Fq -- '--expected-version' "$release"
+
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|1341282709|rodri-oliveira-dev/dotnet-library-template' "$release"; then
+            echo "Workflow de release contém credencial persistente, permissão ou metadado específico do repositório-base."
+            exit 1
+          fi
+
       - name: Instalar template do checkout
         run: dotnet new install .
 
@@ -225,6 +253,8 @@ jobs:
             ".github/dependabot.yml"
             ".github/workflows/ci.yml"
             ".github/workflows/codeql.yml"
+            ".github/workflows/dependency-review.yml"
+            ".github/workflows/release.yml"
             "scripts/verify-package.cs"
           )
 
@@ -269,6 +299,16 @@ jobs:
           grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'actions/dependency-review-action@v5' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'NuGet/login@v1' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
 
       - name: Inicializar contexto Git da saída
         shell: bash

@@ -31,7 +31,7 @@ Keep the parameter surface intentionally small. Add a new parameter only when th
 
 ## Generated content versus maintenance-only content
 
-Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, the main CI workflow, the CodeQL security workflow, and package verification tooling.
+Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, CI/security/release workflows, and package verification tooling.
 
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
@@ -74,9 +74,46 @@ dotnet pack src/Template.Library/Template.Library.csproj \
 dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
 ```
 
-`.github/workflows/ci.yml` performs the equivalent baseline checks automatically. It also publishes a Cobertura report as the `coverage` artifact and the generated `.nupkg`/`.snupkg` files as the `nuget-packages` artifact. The strict Source Link option is appropriate here because the source template is expected to be built from a real Git checkout with repository metadata.
+`.github/workflows/ci.yml` performs the equivalent baseline checks automatically. It also publishes a Cobertura report as the `coverage` artifact and the generated `.nupkg`/`.snupkg` files as the `nuget-packages` artifact.
 
 `.github/workflows/codeql.yml` is intentionally separate from CI. It initializes CodeQL for C# with `build-mode: manual`, restores dependencies in locked mode, builds the Release solution, and uploads analysis results with only `contents: read` and `security-events: write` permissions.
+
+`.github/workflows/dependency-review.yml` reviews only dependency deltas introduced by pull requests and blocks new High/Critical known vulnerabilities.
+
+## Release workflow
+
+`.github/workflows/release.yml` is reusable generated-project content. It has two activation modes:
+
+- a pushed SemVer tag (`vMAJOR.MINOR.PATCH` or prerelease) is a real release;
+- `workflow_dispatch` requires an explicit version and is always a dry-run.
+
+The build job validates the version, restores in locked mode, resolves the package identity, builds, tests, packs with the derived version and runs:
+
+```bash
+dotnet run --file scripts/verify-package.cs -- artifacts/packages \
+  --require-source-link \
+  --expected-version <version-without-v>
+```
+
+Real publication uses NuGet.org Trusted Publishing via GitHub OIDC and `NuGet/login@v1`. The generated repository must configure a Trusted Publishing policy for `release.yml` and a repository variable named `NUGET_USER` with the nuget.org profile name.
+
+The template intentionally does **not** store or request a long-lived `NUGET_API_KEY`.
+
+### Placeholder publication guard
+
+The source template must be able to validate a release without ever publishing its neutral package identity. At the same time, the guard itself must not carry source-repository names or IDs into generated projects.
+
+`release.yml` therefore resolves the actual `PackageId` and compares it to the neutral placeholder. The placeholder is assembled from separate shell string fragments (`"Template"`, `"."`, `"Library"`) so the template engine does not replace that comparison when generating a project.
+
+This gives the desired behavior:
+
+- in the source template, `PackageId` is the placeholder, so `safe-to-publish=false` and external publishing jobs are skipped;
+- in a direct GitHub Template copy that has not yet been renamed, the same protection remains active;
+- in a project created via `dotnet new`, the project/package identity is replaced with the generated library name, while the neutral comparison remains unchanged, so publication is allowed after Trusted Publishing is configured.
+
+This mechanism blocks the source package without embedding repository-specific metadata in reusable output.
+
+The GitHub Release job depends on successful NuGet publication, preventing a GitHub Release from being created after a failed NuGet authentication/push.
 
 ## Install the template locally
 
@@ -139,9 +176,9 @@ A valid generated project must not contain unintended matches.
 
 ## Automated generation test
 
-`.github/workflows/template-validation.yml` automates the development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, confirms that reusable CI/security workflows are present and parametrized, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
+`.github/workflows/template-validation.yml` automates the development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, confirms that reusable CI/security/release workflows are present and parametrized, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
 
-The workflow is intentionally separate from `.github/workflows/ci.yml` and `.github/workflows/codeql.yml` so failures in the source baseline, security analysis, and template generation remain distinguishable in GitHub Actions.
+Release changes must additionally confirm that `release.yml` is copied to generated projects, that project paths inside it follow the generated identity, that the neutral placeholder guard remains intact, and that no source-repository name or ID is introduced into the generated workflow.
 
 ## Reinstall after template changes
 
@@ -172,4 +209,4 @@ The automated workflow also attempts to uninstall the template at the end so the
 
 ## Documentation checks
 
-When commands, paths, generated content, repository settings, workflows, or template exclusions change, update both the root README and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.
+When commands, paths, generated content, repository settings, workflows, release authentication, or template exclusions change, update both the root README and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.

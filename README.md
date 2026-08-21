@@ -1,6 +1,6 @@
 # .NET Library Template
 
-Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança e governança.
+Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança, release e governança.
 
 O repositório pode ser usado de duas formas:
 
@@ -24,8 +24,9 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - `.nupkg`, `.snupkg`, documentação XML e Source Link;
 - validação do pacote em um consumidor temporário;
 - licença MIT, contribuição, Code of Conduct e changelog;
-- GitHub Actions para CI, análise CodeQL e validação end-to-end do custom template;
-- artefatos de cobertura Cobertura e pacotes NuGet publicados pelo CI para diagnóstico.
+- GitHub Actions para CI, CodeQL, Dependency Review, release e validação end-to-end do custom template;
+- artefatos de cobertura Cobertura e pacotes NuGet publicados pelo CI para diagnóstico;
+- release por tag com versionamento validado, NuGet.org Trusted Publishing/OIDC e GitHub Release.
 
 O template permanece deliberadamente genérico: não inclui ASP.NET Core, banco de dados, ORM, logging específico, Testcontainers de infraestrutura, BenchmarkDotNet ou outras dependências sem um caso de uso comum e comprovado.
 
@@ -55,13 +56,14 @@ Antes de publicar ou liberar a biblioteca:
 - substitua a identidade `Template.Library` pelo nome real do projeto, caso tenha usado a cópia direta;
 - personalize a descrição do pacote no `.csproj`;
 - revise o README, licença e metadados públicos;
-- configure os secrets exigidos pelos workflows que você decidir usar;
+- configure uma política de NuGet.org Trusted Publishing para `.github/workflows/release.yml`;
+- configure a repository variable `NUGET_USER` com o profile name do nuget.org;
 - configure branch protection ou rulesets para `main`;
 - revise as permissões padrão do GitHub Actions;
 - configure environments quando houver deploy/publicação protegida;
 - confirme a disponibilidade do code scanning e revise os recursos de segurança apropriados, como Dependabot alerts, secret scanning e push protection quando disponíveis.
 
-**Secrets, environments, rulesets, branch protection, permissões administrativas do Actions e demais settings do repositório não são copiados por um GitHub Template Repository.**
+**Trusted Publishing policies, repository variables, secrets, environments, rulesets, branch protection, permissões administrativas do Actions e demais settings do repositório não são copiados por um GitHub Template Repository.**
 
 ## Opção 2 — `dotnet new`
 
@@ -135,11 +137,41 @@ No .NET 10, Source Link para GitHub é fornecido pelo SDK para projetos SDK-styl
 
 O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório e commit são derivados do contexto de Git/build. Isso impede que uma biblioteca gerada publique por engano a URL do repositório-base.
 
-## Análise de segurança com CodeQL
+## Análise de segurança
 
-`.github/workflows/codeql.yml` executa análise CodeQL para C# em pull requests para `main`, pushes em `main` e uma agenda semanal. A baseline usa CodeQL Action v4 com `build-mode: manual`, restaurando dependências em `--locked-mode` e compilando em Release para que a análise observe o mesmo contrato de build reproduzível do projeto.
+`.github/workflows/codeql.yml` executa análise CodeQL para C# em pull requests para `main`, pushes em `main` e uma agenda semanal. A baseline usa CodeQL Action v4 com `build-mode: manual`, restore em `--locked-mode` e build Release.
 
-O workflow mantém permissões mínimas (`contents: read` e `security-events: write`), não usa secrets customizados e permanece separado do CI principal para não duplicar testes, cobertura e empacotamento.
+`.github/workflows/dependency-review.yml` analisa o delta de dependências dos pull requests para `main` e bloqueia vulnerabilidades novas High/Critical.
+
+## Release e publicação NuGet
+
+`.github/workflows/release.yml` separa validação, publicação NuGet e criação do GitHub Release.
+
+Publicação real acontece somente em tags no formato:
+
+```text
+vMAJOR.MINOR.PATCH
+vMAJOR.MINOR.PATCH-prerelease
+```
+
+O workflow valida a tag, remove apenas o prefixo `v`, usa essa versão no build/pack e executa `verify-package.cs --expected-version` antes de qualquer publicação.
+
+`workflow_dispatch` exige uma versão explícita, mas é **sempre dry-run**: executa build/test/pack sem autenticar no NuGet.org e sem criar GitHub Release.
+
+A publicação no NuGet.org usa **Trusted Publishing** via GitHub OIDC e `NuGet/login@v1`. Não há `NUGET_API_KEY` de longa duração no template. Um repositório gerado precisa configurar:
+
+1. uma Trusted Publishing policy no nuget.org apontando para `release.yml`;
+2. a repository variable `NUGET_USER` com o profile name do nuget.org.
+
+O job NuGet recebe apenas `contents: read` e `id-token: write`. O job que cria o GitHub Release recebe `contents: write` somente depois que a publicação NuGet termina com sucesso.
+
+### Proteção contra publicação do placeholder
+
+Antes de publicar, o workflow resolve o `PackageId` real do projeto. A identidade neutra do source template é montada em partes no script (`"Template" + "." + "Library"`) para que o template engine não a substitua ao gerar uma biblioteca.
+
+Se o `PackageId` ainda corresponder a essa identidade placeholder, o output `safe-to-publish` fica `false` e os jobs de NuGet.org e GitHub Release são ignorados. Assim, este repositório — e também uma cópia direta criada pelo botão **Use this template** que ainda não tenha sido renomeada — pode validar restore/build/test/pack, mas não publicar o pacote placeholder.
+
+Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo nome real da biblioteca enquanto a identidade de bloqueio permanece neutra; portanto, depois de configurar Trusted Publishing, a publicação por tag fica habilitada sem carregar nome ou ID específico do repositório-base.
 
 ## Estrutura resumida
 
@@ -151,6 +183,8 @@ O workflow mantém permissões mínimas (`contents: read` e `security-events: wr
 │   └── workflows/
 │       ├── ci.yml
 │       ├── codeql.yml
+│       ├── dependency-review.yml
+│       ├── release.yml
 │       └── template-validation.yml
 ├── .template.config/
 │   └── template.json
@@ -176,7 +210,7 @@ O workflow mantém permissões mínimas (`contents: read` e `security-events: wr
 
 ## O que entra no projeto gerado por `dotnet new`
 
-A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI e CodeQL e tooling de pacote.
+A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI, CodeQL, Dependency Review e release, além do tooling de pacote.
 
 Conteúdo usado apenas para manter o template é excluído da saída:
 
@@ -191,13 +225,15 @@ A cópia feita pelo botão **Use this template** é diferente: como o GitHub nã
 
 ## Validação automática
 
-Três workflows possuem responsabilidades diferentes:
+Os workflows possuem responsabilidades separadas:
 
-- `.github/workflows/ci.yml` é o CI principal: tooling, locked restore, políticas de build, CPM, format, build, testes, cobertura Cobertura, packaging, Source Link, consumo do pacote, governança e limpeza da árvore. O workflow também publica os artefatos `coverage` e `nuget-packages` e cancela execuções antigas do mesmo ref;
-- `.github/workflows/codeql.yml` faz análise estática de segurança do código C# com build manual reproduzível e envia os resultados para code scanning;
-- `.github/workflows/template-validation.yml` instala o checkout como custom template, gera `Validation.SampleLibrary` e prova que a saída possui paths corretos, lock files, workflows esperados, build/test/pack funcionais, PackageId parametrizado e ausência de resíduos de `Template.Library` ou projetos usados como referência.
+- `.github/workflows/ci.yml`: restore, build, testes, cobertura, pack e artefatos;
+- `.github/workflows/codeql.yml`: análise estática CodeQL para C#;
+- `.github/workflows/dependency-review.yml`: revisão do delta de dependências em pull requests;
+- `.github/workflows/release.yml`: validação de versão, build/test/pack, Trusted Publishing e GitHub Release;
+- `.github/workflows/template-validation.yml`: geração de `Validation.SampleLibrary` e validação E2E da saída do `dotnet new`.
 
-Separar os workflows torna regressões de CI, segurança e template engine distinguíveis no GitHub Actions.
+Separar os workflows torna regressões de CI, segurança, release e template engine distinguíveis no GitHub Actions.
 
 ## Convenção `Template.Library`
 
