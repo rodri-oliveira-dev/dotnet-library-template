@@ -11,9 +11,6 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: read
-
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -22,6 +19,8 @@ jobs:
   build-and-pack:
     name: Validate, build, test and pack
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       package-version: ${{ steps.version.outputs.package_version }}
       release-tag: ${{ steps.version.outputs.release_tag }}
@@ -194,7 +193,7 @@ jobs:
 
       - name: Exchange GitHub OIDC token for temporary NuGet API key
         id: nuget-login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ vars.NUGET_USER }}
 
