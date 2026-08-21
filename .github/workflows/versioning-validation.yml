@@ -98,6 +98,8 @@ jobs:
           test -s "$GENERATED_ROOT/Directory.Build.props"
           test -s "$GENERATED_ROOT/.github/workflows/release.yml"
           test -s "$GENERATED_ROOT/scripts/verify-package.cs"
+          test -s "$GENERATED_ROOT/scripts/resolve-release-request.sh"
+          test -s "$GENERATED_ROOT/scripts/ensure-release-tag.sh"
           test ! -e "$GENERATED_ROOT/.github/workflows/versioning-validation.yml"
 
           release="$GENERATED_ROOT/.github/workflows/release.yml"
@@ -107,12 +109,15 @@ jobs:
           grep -Fq '1.0.0' "$GENERATED_ROOT/README.md"
           grep -Fq -- '-p:Version="$PACKAGE_VERSION"' "$release"
           grep -Fq -- '--expected-version "$PACKAGE_VERSION"' "$release"
+          grep -Fq 'Ensure release tag' "$release"
+          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
           grep -Fq 'always() &&' "$release"
-          grep -Fq "needs.build-and-pack.outputs.safe-to-publish == 'false' ||" "$release"
+          grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
+          grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
           grep -Fq "needs.publish-nuget.result == 'success'" "$release"
-          grep -Fq 'Create GitHub Release with NuGet artifacts' "$release"
+          grep -Fq 'Create GitHub Release with package artifacts' "$release"
           grep -Fq 'Create source-template GitHub Release without package artifacts' "$release"
-          grep -Fq 'Download published package artifacts' "$release"
+          grep -Fq 'Download package artifacts' "$release"
 
           source_block="$(awk '/Create source-template GitHub Release without package artifacts/{capture=1} capture{print}' "$release")"
           if grep -Fq 'artifacts/packages/' <<<"$source_block"; then
