@@ -19,9 +19,30 @@ Existem dois fluxos suportados:
 | Fluxo | Quando usar | Renomeia `Template.Library` automaticamente? |
 | --- | --- | --- |
 | [`dotnet new`](#opção-recomendada--dotnet-new) | Quando você quer gerar uma nova biblioteca já com identidade própria | Sim |
-| [GitHub Template Repository](#alternativa--github-template-repository) | Quando você quer copiar a estrutura completa do repositório e ajustar a identidade manualmente | Não |
+| [GitHub Template Repository](#alternativa--github-template-repository) | Quando você quer criar primeiro um repositório no GitHub e inicializá-lo por Actions | Sim, depois do workflow `Initialize repository` |
 
 Para a maioria dos novos projetos, prefira **`dotnet new`**.
+
+## Quick Start
+
+Fluxo recomendado para gerar uma biblioteca localmente:
+
+```bash
+git clone https://github.com/rodri-oliveira-dev/dotnet-library-template.git
+cd dotnet-library-template
+
+dotnet new install .
+dotnet new list rodri-lib
+
+dotnet new rodri-lib -n MyCompany.MyLibrary
+cd MyCompany.MyLibrary
+
+dotnet restore --locked-mode
+dotnet build -c Release
+dotnet test -c Release
+```
+
+Esse caminho executa o template engine do .NET, cria o diretório `MyCompany.MyLibrary/` por causa de `preferNameDirectory` e substitui `Template.Library` nos paths e conteúdos relevantes.
 
 ## O que a baseline fornece
 
@@ -94,6 +115,9 @@ dotnet --version
 Clone este repositório e instale o template a partir da raiz:
 
 ```bash
+git clone https://github.com/rodri-oliveira-dev/dotnet-library-template.git
+cd dotnet-library-template
+
 dotnet new install .
 dotnet new list rodri-lib
 ```
@@ -105,6 +129,14 @@ dotnet new rodri-lib -n MyCompany.MyLibrary
 ```
 
 Como `preferNameDirectory` está habilitado, o comando cria `MyCompany.MyLibrary/` e substitui a identidade neutra `Template.Library` nos paths e conteúdos relevantes.
+
+Se você quiser controlar explicitamente o diretório de destino, use `-o`/`--output`:
+
+```bash
+dotnet new rodri-lib -n MyCompany.MyLibrary -o ./MyCompany.MyLibrary
+```
+
+O parâmetro `-o` é opcional; ele é útil quando você quer gerar a biblioteca em um caminho diferente do diretório preferido pelo nome.
 
 Valide a saída:
 
@@ -125,6 +157,7 @@ Sem override de release, o pacote usa a versão base `1.0.0`.
 Quando terminar de testar a instalação local:
 
 ```bash
+cd ..
 dotnet new uninstall .
 ```
 
@@ -132,17 +165,41 @@ Detalhes de evolução e validação do template estão em [docs/template-develo
 
 ## Alternativa — GitHub Template Repository
 
-Na página do repositório, use **Use this template** e escolha **Create a new repository**.
+Na página do repositório, use **Use this template** e escolha **Create a new repository**. Em seguida, inicialize a cópia pelo GitHub Actions:
 
-Esse fluxo faz uma cópia direta dos arquivos versionados. O GitHub **não executa** o template engine do .NET e, portanto, não substitui automaticamente `Template.Library` em nomes de solução, projetos, namespaces ou `PackageId`.
+```text
+Use this template
+→ Create a new repository
+→ Actions
+→ Initialize repository
+→ Run workflow
+→ project_name = MyCompany.MyLibrary
+```
 
-Use esse fluxo quando você realmente quiser preservar a estrutura integral do repositório e aceitar a etapa de personalização manual.
+O GitHub **não executa** `.template.config/template.json` ao copiar o repositório. Ele faz somente a cópia inicial. O workflow **Initialize repository** executa depois o template engine real do .NET dentro da cópia, usando `dotnet new rodri-lib -n MyCompany.MyLibrary`, para aplicar `sourceName`, `exclude`, `rename` e `preferNameDirectory` a partir da configuração oficial do template.
 
-### Checklist pós-criação
+Depois de uma inicialização bem-sucedida:
+
+- `Template.Library` é substituído pela identidade informada;
+- arquivos exclusivos de manutenção do template são removidos;
+- `docs/library-readme.md` vira o `README.md` da biblioteca gerada;
+- o próprio workflow `Initialize repository` e seu helper são removidos;
+- o desenvolvimento continua usando os workflows normais da biblioteca gerada.
+
+Execute esse workflow antes de iniciar o desenvolvimento normal no novo repositório. Ele deve rodar na branch padrão e falha se for executado no repositório-fonte `rodri-oliveira-dev/dotnet-library-template`.
+
+### Pré-requisitos e falhas esperadas
+
+- GitHub Actions precisa estar habilitado no novo repositório;
+- o workflow usa `contents: write` para commitar e enviar a inicialização;
+- rulesets ou branch protection da organização podem bloquear o push feito com `GITHUB_TOKEN`;
+- se validação, build, testes ou empacotamento falharem, o workflow não deve commitar nem enviar uma inicialização parcial;
+- se o push for bloqueado, ajuste as regras do repositório ou aplique um processo equivalente aprovado sem enfraquecer a segurança automaticamente.
+
+### Checklist pós-inicialização
 
 Antes do primeiro release de uma biblioteca criada pelo GitHub Template:
 
-- substitua `Template.Library` pela identidade real da biblioteca;
 - personalize a descrição e os metadados do pacote;
 - revise a versão base em `Directory.Build.props`;
 - revise README, licença e metadados públicos;
@@ -280,6 +337,7 @@ Os principais workflows têm responsabilidades separadas:
 | `sonar-template-validation.yml` | validação do contrato Sonar na saída gerada |
 | `versioning-validation.yml` | validação do contrato SemVer e metadata do pacote/assembly |
 | `release-publishing-validation.yml` | validação maintenance-only do pedido de release, tag e opt-in NuGet |
+| `github-template-initialization-validation.yml` | validação maintenance-only da inicialização via GitHub Template Repository |
 
 Separar esses fluxos torna falhas de build, segurança, análise externa, geração e release independentes e diagnosticáveis.
 
@@ -316,6 +374,7 @@ A maior parte da baseline é copiada para projetos gerados: código, testes, bui
 Conteúdo específico de manutenção do template é excluído, incluindo:
 
 - `.template.config/**`;
+- workflow e helper de inicialização via GitHub Template Repository;
 - workflows de validação exclusivos do template;
 - `docs/template-development.md`;
 - `docs/repository-administration.md`;
