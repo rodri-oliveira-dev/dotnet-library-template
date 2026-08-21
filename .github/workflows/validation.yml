@@ -1,0 +1,35 @@
+name: Validação
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Restore, build e testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar dependências
+        run: dotnet restore Template.Library.slnx
+
+      - name: Compilar
+        run: dotnet build Template.Library.slnx --configuration Release --no-restore
+
+      - name: Executar testes
+        run: dotnet test Template.Library.slnx --configuration Release --no-build
