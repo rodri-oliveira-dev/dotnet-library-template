@@ -108,6 +108,49 @@ jobs:
           grep -Fq 'New dependencies' .github/pull_request_template.md
           grep -Fq 'sensitive information' .github/pull_request_template.md
 
+      - name: Verificar configuração do Dependabot no checkout
+        shell: bash
+        run: |
+          file=".github/dependabot.yml"
+
+          if [ ! -s "$file" ]; then
+            echo "Configuração do Dependabot ausente ou vazia."
+            exit 1
+          fi
+
+          grep -Eq '^version: 2$' "$file"
+          grep -Fq 'package-ecosystem: "nuget"' "$file"
+          grep -Fq 'package-ecosystem: "github-actions"' "$file"
+
+          if [ "$(grep -Fc 'directory: "/"' "$file")" -ne 2 ]; then
+            echo "NuGet e GitHub Actions devem monitorar a raiz do repositório."
+            exit 1
+          fi
+
+          if [ "$(grep -Fc 'interval: "weekly"' "$file")" -ne 2 ]; then
+            echo "Ambos os ecossistemas devem usar frequência semanal."
+            exit 1
+          fi
+
+          if [ "$(grep -Fc 'timezone: "America/Sao_Paulo"' "$file")" -ne 2 ]; then
+            echo "Ambos os ecossistemas devem declarar timezone explícito."
+            exit 1
+          fi
+
+          if [ "$(grep -Fc 'open-pull-requests-limit: 5' "$file")" -ne 2 ]; then
+            echo "Ambos os ecossistemas devem limitar PRs simultâneos."
+            exit 1
+          fi
+
+          grep -Fq 'update-types:' "$file"
+          grep -Fq -- '- "minor"' "$file"
+          grep -Fq -- '- "patch"' "$file"
+
+          if grep -Eq 'registries:|secrets\.|token:|password:' "$file"; then
+            echo "A baseline do Dependabot não deve conter registry privado ou credencial."
+            exit 1
+          fi
+
       - name: Instalar template do checkout
         run: dotnet new install .
 
@@ -152,6 +195,7 @@ jobs:
             ".github/ISSUE_TEMPLATE/bug_report.yml"
             ".github/ISSUE_TEMPLATE/feature_request.yml"
             ".github/pull_request_template.md"
+            ".github/dependabot.yml"
             ".github/workflows/validation.yml"
             "scripts/verify-package.cs"
           )
@@ -182,6 +226,8 @@ jobs:
           grep -Fq 'name: Bug report' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/bug_report.yml"
           grep -Fq 'name: Feature request' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/feature_request.yml"
           grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
+          grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
 
       - name: Inicializar contexto Git da saída
         shell: bash
