@@ -250,7 +250,7 @@ jobs:
             exit 1
           fi
 
-          git --git-dir="$remote" update-ref refs/tags/v2.0.0 "$different_sha"
+          git -C "$work" push --force origin "$different_sha:refs/tags/v2.0.0"
           test "$(git -C "$work" rev-list -n 1 v2.0.0)" = "$validated_sha"
           if (
             cd "$work"
@@ -260,7 +260,7 @@ jobs:
             exit 1
           fi
 
-          git --git-dir="$remote" update-ref -d refs/tags/v2.0.0
+          git -C "$work" push origin :refs/tags/v2.0.0
           if (
             cd "$work"
             IS_MANUAL_RELEASE=false RELEASE_TAG=v2.0.0 VALIDATED_SHA="$validated_sha" bash "$tag_guard"
