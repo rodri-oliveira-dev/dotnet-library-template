@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   publication-gate:
-    name: Validate NuGet publication opt-in
+    name: Validate release and NuGet publication flow
     runs-on: ubuntu-latest
 
     steps:
@@ -33,11 +33,24 @@ jobs:
         shell: bash
         run: |
           release='.github/workflows/release.yml'
-          resolver='scripts/resolve-nuget-publishing.sh'
+          request_resolver='scripts/resolve-release-request.sh'
+          tag_guard='scripts/ensure-release-tag.sh'
+          nuget_resolver='scripts/resolve-nuget-publishing.sh'
 
           test -s "$release"
-          test -s "$resolver"
+          test -s "$request_resolver"
+          test -s "$tag_guard"
+          test -s "$nuget_resolver"
 
+          grep -Fq "description: 'Release version" "$release"
+          grep -Fq 'Validate release request' "$release"
+          grep -Fq 'run: bash scripts/resolve-release-request.sh' "$release"
+          grep -Fq 'is-manual-release:' "$release"
+          grep -Fq 'Ensure release tag' "$release"
+          grep -Fq 'Create or verify release tag' "$release"
+          grep -Fq 'VALIDATED_SHA:' "$release"
+          grep -Fq 'github.sha' "$release"
+          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
           grep -Fq 'nuget-publishing-enabled:' "$release"
           grep -Fq 'steps.nuget-publishing.outputs.nuget_publishing_enabled' "$release"
           grep -Fq 'Resolve NuGet publishing opt-in' "$release"
@@ -45,14 +58,17 @@ jobs:
           grep -Fq 'vars.NUGET_USER' "$release"
           grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
           grep -Fq "if: needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'" "$release"
-          grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'" "$release"
+          grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
+          grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
           grep -Fq "needs.publish-nuget.result == 'success'" "$release"
+          grep -Fq 'Create GitHub Release with package artifacts' "$release"
+          grep -Fq 'Create source-template GitHub Release without package artifacts' "$release"
           grep -Fq 'id-token: write' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'dotnet nuget push' "$release"
 
-          if grep -Fq 'Validate NuGet trusted-publishing configuration' "$release"; then
-            echo 'The release workflow must not fail merely because NUGET_USER is absent.'
+          if grep -Fq 'workflow_dispatch is dry-run' "$release" "$nuget_resolver"; then
+            echo 'workflow_dispatch must be a real release path, not a dry run.'
             exit 1
           fi
 
@@ -61,7 +77,7 @@ jobs:
             exit 1
           fi
 
-      - name: Validate publication decision matrix
+      - name: Validate NuGet publication decision matrix
         shell: bash
         run: |
           resolver='scripts/resolve-nuget-publishing.sh'
@@ -99,7 +115,140 @@ jobs:
           assert_decision false nuget-user-not-configured true true configured '   '
           assert_decision true enabled true true configured 'nuget-profile'
           assert_decision false placeholder-package true false configured 'nuget-profile'
-          assert_decision false dry-run false true configured 'nuget-profile'
+          assert_decision false release-disabled false true configured 'nuget-profile'
+
+      - name: Validate manual release request rules
+        shell: bash
+        run: |
+          resolver="$GITHUB_WORKSPACE/scripts/resolve-release-request.sh"
+          root="$(mktemp -d)"
+          remote="$root/remote.git"
+          work="$root/work"
+
+          git init --bare "$remote"
+          git init -b main "$work"
+          git -C "$work" config user.name 'Release Validation'
+          git -C "$work" config user.email 'release-validation@example.invalid'
+          echo baseline > "$work/file.txt"
+          git -C "$work" add file.txt
+          git -C "$work" commit -m 'Initial commit'
+          git -C "$work" remote add origin "$remote"
+          git -C "$work" push -u origin main
+
+          output="$(mktemp)"
+          (
+            cd "$work"
+            EVENT_NAME=workflow_dispatch \
+              MANUAL_VERSION=v1.2.0 \
+              REF_NAME=main \
+              REF_TYPE=branch \
+              RELEASE_BRANCH=main \
+              GITHUB_OUTPUT="$output" \
+              bash "$resolver"
+          )
+          grep -Fxq 'package_version=1.2.0' "$output"
+          grep -Fxq 'release_tag=v1.2.0' "$output"
+          grep -Fxq 'should_publish=true' "$output"
+          grep -Fxq 'is_manual_release=true' "$output"
+          rm -f "$output"
+
+          if (
+            cd "$work"
+            EVENT_NAME=workflow_dispatch MANUAL_VERSION=v1.2.0 REF_NAME=feature REF_TYPE=branch bash "$resolver"
+          ); then
+            echo 'Manual release outside main should have failed.'
+            exit 1
+          fi
+
+          if (
+            cd "$work"
+            EVENT_NAME=workflow_dispatch MANUAL_VERSION=1.2.0 REF_NAME=main REF_TYPE=branch bash "$resolver"
+          ); then
+            echo 'Release version without v prefix should have failed.'
+            exit 1
+          fi
+
+          git -C "$work" tag v1.1.0
+          git -C "$work" push origin refs/tags/v1.1.0
+          if (
+            cd "$work"
+            EVENT_NAME=workflow_dispatch MANUAL_VERSION=v1.1.0 REF_NAME=main REF_TYPE=branch bash "$resolver"
+          ); then
+            echo 'Manual release with an existing tag should have failed.'
+            exit 1
+          fi
+
+          output="$(mktemp)"
+          (
+            cd "$work"
+            EVENT_NAME=push \
+              REF_NAME=v1.1.0 \
+              REF_TYPE=tag \
+              GITHUB_OUTPUT="$output" \
+              bash "$resolver"
+          )
+          grep -Fxq 'release_tag=v1.1.0' "$output"
+          grep -Fxq 'is_manual_release=false' "$output"
+          rm -f "$output"
+
+      - name: Validate release tag creation and SHA guard
+        shell: bash
+        run: |
+          tag_guard="$GITHUB_WORKSPACE/scripts/ensure-release-tag.sh"
+          root="$(mktemp -d)"
+          remote="$root/remote.git"
+          work="$root/work"
+
+          git init --bare "$remote"
+          git init -b main "$work"
+          git -C "$work" config user.name 'Release Validation'
+          git -C "$work" config user.email 'release-validation@example.invalid'
+          echo baseline > "$work/file.txt"
+          git -C "$work" add file.txt
+          git -C "$work" commit -m 'Initial commit'
+          git -C "$work" remote add origin "$remote"
+          git -C "$work" push -u origin main
+          validated_sha="$(git -C "$work" rev-parse HEAD)"
+
+          (
+            cd "$work"
+            IS_MANUAL_RELEASE=true \
+              RELEASE_TAG=v2.0.0 \
+              VALIDATED_SHA="$validated_sha" \
+              bash "$tag_guard"
+          )
+
+          remote_tag_sha="$(git ls-remote "$remote" refs/tags/v2.0.0 | awk '{print $1}')"
+          test "$remote_tag_sha" = "$validated_sha"
+
+          if (
+            cd "$work"
+            IS_MANUAL_RELEASE=true RELEASE_TAG=v2.0.0 VALIDATED_SHA="$validated_sha" bash "$tag_guard"
+          ); then
+            echo 'Concurrent/existing manual tag should have been rejected.'
+            exit 1
+          fi
+
+          (
+            cd "$work"
+            IS_MANUAL_RELEASE=false \
+              RELEASE_TAG=v2.0.0 \
+              VALIDATED_SHA="$validated_sha" \
+              bash "$tag_guard"
+          )
+
+          echo changed >> "$work/file.txt"
+          git -C "$work" add file.txt
+          git -C "$work" commit -m 'Different commit'
+          different_sha="$(git -C "$work" rev-parse HEAD)"
+
+          if (
+            cd "$work"
+            IS_MANUAL_RELEASE=false RELEASE_TAG=v2.0.0 VALIDATED_SHA="$different_sha" bash "$tag_guard"
+          ); then
+            echo 'Tag pointing to a different SHA should have been rejected.'
+            exit 1
+          fi
 
       - name: Install template from checkout
         run: dotnet new install .
@@ -112,24 +261,32 @@ jobs:
           dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
           echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
 
-      - name: Validate generated publication gate
+      - name: Validate generated release flow
         shell: bash
         run: |
           release="$GENERATED_ROOT/.github/workflows/release.yml"
-          resolver="$GENERATED_ROOT/scripts/resolve-nuget-publishing.sh"
+          request_resolver="$GENERATED_ROOT/scripts/resolve-release-request.sh"
+          tag_guard="$GENERATED_ROOT/scripts/ensure-release-tag.sh"
+          nuget_resolver="$GENERATED_ROOT/scripts/resolve-nuget-publishing.sh"
 
           test -s "$release"
-          test -s "$resolver"
+          test -s "$request_resolver"
+          test -s "$tag_guard"
+          test -s "$nuget_resolver"
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$release"
+          grep -Fq 'run: bash scripts/resolve-release-request.sh' "$release"
+          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
           grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
-          grep -Fq "if: needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'" "$release"
+          grep -Fq 'NUGET_USER' "$GENERATED_ROOT/README.md"
+          grep -Fq 'Settings' "$GENERATED_ROOT/README.md"
+          grep -Fq 'Secrets and variables' "$GENERATED_ROOT/README.md"
 
           output="$(mktemp)"
           SHOULD_PUBLISH=true \
             SAFE_TO_PUBLISH=true \
             NUGET_USER='' \
             GITHUB_OUTPUT="$output" \
-            bash "$resolver"
+            bash "$nuget_resolver"
 
           grep -Fxq 'nuget_publishing_enabled=false' "$output"
           grep -Fxq 'nuget_publishing_reason=nuget-user-not-configured' "$output"
