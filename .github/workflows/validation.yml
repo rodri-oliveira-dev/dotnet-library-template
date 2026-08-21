@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Restore bloqueado, formatação, build e testes
+    name: Restore bloqueado, CPM, formatação, build e testes
     runs-on: ubuntu-latest
 
     steps:
@@ -76,14 +76,41 @@ jobs:
           assert_contains WarningsAsErrors NU1903
           assert_contains WarningsAsErrors NU1904
 
+      - name: Verificar Central Package Management
+        shell: bash
+        run: |
+          project="tests/Template.Library.Tests/Template.Library.Tests.csproj"
+          enabled="$(dotnet msbuild "$project" -nologo -getProperty:ManagePackageVersionsCentrally | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)"
+
+          if [ "$enabled" != "true" ]; then
+            echo "ManagePackageVersionsCentrally deveria ser true, obtido '$enabled'."
+            exit 1
+          fi
+
+          if grep -R -n -E '<PackageReference[^>]*Version=' --include='*.csproj' src tests; then
+            echo "PackageReference com Version encontrado em projeto gerenciado por CPM."
+            exit 1
+          fi
+
+          if grep -E -i 'Dapper|EntityFrameworkCore|SqlClient|Testcontainers|AspNetCore|OpenTelemetry|Serilog|BenchmarkDotNet' Directory.Packages.props; then
+            echo "Dependência específica/proibida encontrada na baseline central."
+            exit 1
+          fi
+
+      - name: Listar dependências
+        run: dotnet list Template.Library.slnx package --include-transitive
+
       - name: Verificar formatação
         run: dotnet format Template.Library.slnx --verify-no-changes --no-restore
 
       - name: Compilar
         run: dotnet build Template.Library.slnx --configuration Release --no-restore
 
-      - name: Executar testes
+      - name: Executar testes com MTP
         run: dotnet test Template.Library.slnx --configuration Release --no-build
+
+      - name: Validar cobertura com Coverlet MTP
+        run: dotnet test Template.Library.slnx --configuration Release --no-build --coverlet --coverlet-output-format cobertura
 
       - name: Verificar line endings
         shell: bash
