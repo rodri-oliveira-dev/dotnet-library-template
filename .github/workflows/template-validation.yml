@@ -196,7 +196,7 @@ jobs:
             ".github/ISSUE_TEMPLATE/feature_request.yml"
             ".github/pull_request_template.md"
             ".github/dependabot.yml"
-            ".github/workflows/validation.yml"
+            ".github/workflows/ci.yml"
             "scripts/verify-package.cs"
           )
 
@@ -206,6 +206,11 @@ jobs:
               exit 1
             fi
           done
+
+          if [ -e "$GENERATED_ROOT/.github/workflows/validation.yml" ]; then
+            echo "Workflow legado validation.yml não deve existir na saída gerada."
+            exit 1
+          fi
 
           maintenance_only=(
             ".template.config/template.json"
@@ -228,6 +233,8 @@ jobs:
           grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
           grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
           grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'actions/upload-artifact@v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
 
       - name: Inicializar contexto Git da saída
         shell: bash

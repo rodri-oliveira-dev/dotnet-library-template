@@ -65,6 +65,15 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages
 
 The verifier checks package identity, metadata, XML documentation, symbols, repository metadata, and Source Link information.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`. It restores tools and locked dependencies, verifies formatting, builds in Release, runs tests, collects Cobertura coverage, packs and validates the NuGet package, and publishes two downloadable workflow artifacts:
+
+- `coverage` with `coverage.cobertura.xml`;
+- `nuget-packages` with `.nupkg` and `.snupkg` files.
+
+The workflow uses read-only repository permissions and cancels superseded runs for the same Git ref.
+
 ## Repository structure
 
 ```text
@@ -73,7 +82,7 @@ The verifier checks package identity, metadata, XML documentation, symbols, repo
 │   └── dotnet-tools.json
 ├── .github/
 │   └── workflows/
-│       └── validation.yml
+│       └── ci.yml
 ├── scripts/
 │   └── verify-package.cs
 ├── src/

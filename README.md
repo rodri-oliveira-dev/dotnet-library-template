@@ -24,7 +24,8 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - `.nupkg`, `.snupkg`, documentação XML e Source Link;
 - validação do pacote em um consumidor temporário;
 - licença MIT, contribuição, Code of Conduct e changelog;
-- GitHub Actions para validar o repositório-base e o projeto produzido pelo custom template.
+- GitHub Actions para CI do repositório-base e validação end-to-end do custom template;
+- artefatos de cobertura Cobertura e pacotes NuGet publicados pelo CI para diagnóstico.
 
 O template permanece deliberadamente genérico: não inclui ASP.NET Core, banco de dados, ORM, logging específico, Testcontainers de infraestrutura, BenchmarkDotNet ou outras dependências sem um caso de uso comum e comprovado.
 
@@ -142,8 +143,8 @@ O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório 
 │   └── dotnet-tools.json
 ├── .github/
 │   └── workflows/
-│       ├── template-validation.yml
-│       └── validation.yml
+│       ├── ci.yml
+│       └── template-validation.yml
 ├── .template.config/
 │   └── template.json
 ├── docs/
@@ -168,7 +169,7 @@ O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório 
 
 ## O que entra no projeto gerado por `dotnet new`
 
-A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflow normal de validação e tooling de pacote.
+A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflow principal de CI e tooling de pacote.
 
 Conteúdo usado apenas para manter o template é excluído da saída:
 
@@ -185,7 +186,7 @@ A cópia feita pelo botão **Use this template** é diferente: como o GitHub nã
 
 Dois fluxos possuem responsabilidades diferentes:
 
-- `.github/workflows/validation.yml` valida o repositório-base: tooling, locked restore, políticas de build, CPM, format, build, testes, cobertura, packaging, Source Link, consumo do pacote, governança e limpeza da árvore;
+- `.github/workflows/ci.yml` é o CI principal: tooling, locked restore, políticas de build, CPM, format, build, testes, cobertura Cobertura, packaging, Source Link, consumo do pacote, governança e limpeza da árvore. O workflow também publica os artefatos `coverage` e `nuget-packages` e cancela execuções antigas do mesmo ref;
 - `.github/workflows/template-validation.yml` instala o checkout como custom template, gera `Validation.SampleLibrary` e prova que a saída possui paths corretos, lock files, build/test/pack funcionais, PackageId parametrizado e ausência de resíduos de `Template.Library` ou projetos usados como referência.
 
 Separar os workflows torna uma regressão do template engine distinguível de uma regressão na própria baseline.
