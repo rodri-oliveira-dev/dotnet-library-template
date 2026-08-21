@@ -129,7 +129,7 @@ jobs:
 
       - name: Pack release artifacts
         env:
-          PACKAGE_VERSION: ${{ steps.version.outputs.package-version }}
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
         run: >-
           dotnet pack src/Template.Library/Template.Library.csproj
           --configuration Release
