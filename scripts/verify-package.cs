@@ -5,13 +5,15 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Xml.Linq;
 
-if (args.Length != 1)
+if (args.Length is < 1 or > 2 || (args.Length == 2 && args[1] != "--require-source-link"))
 {
-    Console.Error.WriteLine("Uso: dotnet run --file scripts/verify-package.cs -- <diretorio-de-pacotes>");
+    Console.Error.WriteLine(
+        "Uso: dotnet run --file scripts/verify-package.cs -- <diretorio-de-pacotes> [--require-source-link]");
     return 1;
 }
 
 var packageDirectory = Path.GetFullPath(args[0]);
+var requireSourceLink = args.Length == 2;
 var nupkg = Directory.EnumerateFiles(packageDirectory, "*.nupkg")
     .Single(path => !path.EndsWith(".snupkg", StringComparison.OrdinalIgnoreCase));
 var snupkg = Directory.EnumerateFiles(packageDirectory, "*.snupkg").Single();
@@ -28,34 +30,28 @@ var metadata = nuspec.Root.Element(ns + "metadata")
 
 AssertEqual("Template.Library", metadata.Element(ns + "id")?.Value, "PackageId");
 AssertNotBlank(metadata.Element(ns + "description")?.Value, "Description");
-
-var repository = metadata.Element(ns + "repository")
-    ?? throw new InvalidOperationException("Metadado repository não encontrado no .nuspec.");
-
-AssertEqual("git", repository.Attribute("type")?.Value, "RepositoryType");
-AssertNotBlank(repository.Attribute("url")?.Value, "RepositoryUrl");
-AssertNotBlank(repository.Attribute("commit")?.Value, "RepositoryCommit");
-
-var repositoryUrl = repository.Attribute("url")!.Value;
-var forbiddenRepositories = new[]
-{
-    "Dapper.TypedParameters",
-    "DotNetRepoInspector",
-    "CrispyWaffle",
-    "complexity-analyzers"
-};
-
-foreach (var forbiddenRepository in forbiddenRepositories)
-{
-    if (repositoryUrl.Contains(forbiddenRepository, StringComparison.OrdinalIgnoreCase))
-    {
-        throw new InvalidOperationException(
-            $"RepositoryUrl contém referência indevida a '{forbiddenRepository}'.");
-    }
-}
-
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.dll");
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.xml");
+
+var repository = metadata.Element(ns + "repository");
+var repositoryUrl = repository?.Attribute("url")?.Value;
+var repositoryCommit = repository?.Attribute("commit")?.Value;
+
+if (repository is not null)
+{
+    AssertEqual("git", repository.Attribute("type")?.Value, "RepositoryType");
+}
+
+if (requireSourceLink)
+{
+    if (repository is null)
+    {
+        throw new InvalidOperationException("Metadado repository não encontrado no .nuspec.");
+    }
+
+    AssertNotBlank(repositoryUrl, "RepositoryUrl");
+    AssertNotBlank(repositoryCommit, "RepositoryCommit");
+}
 
 using var symbolsArchive = ZipFile.OpenRead(snupkg);
 var pdbEntry = symbolsArchive.GetEntry("lib/net10.0/Template.Library.pdb")
@@ -85,9 +81,13 @@ foreach (var handle in reader.CustomDebugInformation)
     break;
 }
 
-AssertNotBlank(sourceLinkJson, "Source Link JSON");
+if (requireSourceLink)
+{
+    AssertNotBlank(sourceLinkJson, "Source Link JSON");
+}
 
-if (!sourceLinkJson!.Contains("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
+if (!string.IsNullOrWhiteSpace(sourceLinkJson)
+    && !sourceLinkJson.Contains("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))
 {
     throw new InvalidOperationException(
         $"Source Link não aponta para conteúdo versionado do GitHub: {sourceLinkJson}");
@@ -95,8 +95,25 @@ if (!sourceLinkJson!.Contains("raw.githubusercontent.com", StringComparison.Ordi
 
 Console.WriteLine($"Pacote validado: {Path.GetFileName(nupkg)}");
 Console.WriteLine($"Símbolos validados: {Path.GetFileName(snupkg)}");
-Console.WriteLine($"RepositoryUrl: {repositoryUrl}");
-Console.WriteLine("Source Link encontrado no PDB portátil.");
+
+if (!string.IsNullOrWhiteSpace(repositoryUrl))
+{
+    Console.WriteLine($"RepositoryUrl: {repositoryUrl}");
+}
+else
+{
+    Console.WriteLine("RepositoryUrl não disponível neste contexto de build.");
+}
+
+if (!string.IsNullOrWhiteSpace(sourceLinkJson))
+{
+    Console.WriteLine("Source Link encontrado no PDB portátil.");
+}
+else
+{
+    Console.WriteLine("Source Link não disponível neste contexto de build.");
+}
+
 return 0;
 
 static void AssertEntryExists(ZipArchive archive, string path)

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Rodrigo de Oliveira",
+  "classifications": [
+    "Library",
+    ".NET",
+    "C#"
+  ],
+  "identity": "RodriOliveira.DotNet.Library",
+  "name": "Rodrigo Oliveira .NET Library",
+  "shortName": "rodri-lib",
+  "sourceName": "Template.Library",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        "**/[Bb]in/**",
+        "**/[Oo]bj/**",
+        ".git/**",
+        ".template.config/**",
+        ".validation/**",
+        "artifacts/**",
+        "**/*.filelist",
+        "**/*.user",
+        "README.md",
+        "docs/template-development.md",
+        ".github/workflows/template-validation.yml",
+        ".github/workflows/issue-*-pre-pr-validation.yml"
+      ],
+      "rename": {
+        "docs/library-readme.md": "README.md"
+      }
+    }
+  ]
+}
