@@ -21,7 +21,7 @@ public sealed class Class1Tests
         var dependency = Substitute.For<IValueProvider>();
         dependency.GetValue().Returns("expected");
 
-        dependency.GetValue().Should().Be("expected");
+        dependency.GetValue().Should().Be("unexpected");
     }
 
     public interface IValueProvider
