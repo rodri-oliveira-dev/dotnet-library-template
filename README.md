@@ -2,35 +2,41 @@
 
 Template de referência para criação de bibliotecas .NET com uma baseline técnica consistente, simples de evoluir e adequada para projetos reutilizáveis.
 
-O objetivo deste repositório é reduzir o trabalho repetitivo de configuração de novas bibliotecas, concentrando em um único lugar as decisões de estrutura, build, testes, automação, empacotamento e governança que serão implementadas ao longo do roadmap.
+O objetivo deste repositório é reduzir o trabalho repetitivo de configuração de novas bibliotecas, concentrando em um único lugar as decisões de estrutura, build, testes, dependências, automação, empacotamento e governança.
 
 ## Estado atual
 
-A primeira etapa do template fornece uma solução mínima em .NET 10 com:
+A baseline atual fornece:
 
-- um projeto de biblioteca em `src/Template.Library`;
-- um projeto de testes em `tests/Template.Library.Tests`;
+- biblioteca e testes em .NET 10;
 - solução no formato `.slnx`;
-- testes com xUnit;
-- validação automática de restore, build e testes no GitHub Actions.
+- políticas compartilhadas em `Directory.Build.props`;
+- Central Package Management em `Directory.Packages.props`;
+- restore reproduzível com `packages.lock.json`;
+- testes com xUnit v3 usando Microsoft Testing Platform;
+- assertions com AwesomeAssertions e substitutes com NSubstitute;
+- cobertura com Coverlet MTP;
+- manifesto local de ferramentas .NET;
+- validação automática no GitHub Actions.
 
-As demais capacidades, como Central Package Management, empacotamento NuGet, coverage, release, segurança e parametrização via `dotnet new`, serão adicionadas nas próximas etapas do roadmap.
+As capacidades restantes do roadmap, como empacotamento NuGet, Source Link, documentação de governança e evolução do template via `dotnet new`, são implementadas em etapas independentes.
 
 ## Estrutura
 
 ```text
 .
+├── .config/
+│   └── dotnet-tools.json
 ├── .github/
 │   └── workflows/
 │       └── validation.yml
 ├── src/
 │   └── Template.Library/
-│       ├── Class1.cs
-│       └── Template.Library.csproj
 ├── tests/
 │   └── Template.Library.Tests/
-│       ├── Class1Tests.cs
-│       └── Template.Library.Tests.csproj
+├── Directory.Build.props
+├── Directory.Packages.props
+├── global.json
 ├── Template.Library.slnx
 └── README.md
 ```
@@ -46,14 +52,46 @@ Confirme a versão instalada com:
 dotnet --version
 ```
 
+## Ferramentas locais .NET
+
+O repositório mantém um manifesto em `.config/dotnet-tools.json` para que ferramentas de linha de comando, quando necessárias, sejam versionadas junto com o projeto em vez de depender de instalações globais na máquina do desenvolvedor ou no agente de CI.
+
+Restaure as ferramentas locais com:
+
+```bash
+dotnet tool restore
+```
+
+Consulte as ferramentas disponíveis com:
+
+```bash
+dotnet tool list --local
+```
+
+Quando uma ferramenta estiver registrada no manifesto, ela poderá ser executada com:
+
+```bash
+dotnet tool run <comando>
+```
+
+O manifesto começa **intencionalmente vazio**. A cobertura atual é fornecida por `coverlet.MTP` como dependência do projeto de testes, portanto adicionar `dotnet-coverage` neste momento duplicaria uma capacidade que já possui implementação e consumidor claros. Uma nova ferramenta só deve entrar no manifesto quando houver um workflow, script ou comando documentado que efetivamente a utilize.
+
+Nenhum fluxo principal do template deve exigir uma ferramenta .NET instalada globalmente.
+
 ## Executando localmente
 
 A partir da raiz do repositório:
 
+### Restaurar ferramentas locais
+
+```bash
+dotnet tool restore
+```
+
 ### Restaurar dependências
 
 ```bash
-dotnet restore Template.Library.slnx
+dotnet restore Template.Library.slnx --locked-mode
 ```
 
 ### Compilar
@@ -68,17 +106,26 @@ dotnet build Template.Library.slnx --configuration Release --no-restore
 dotnet test Template.Library.slnx --configuration Release --no-build
 ```
 
+### Executar cobertura
+
+```bash
+dotnet test Template.Library.slnx --configuration Release --no-build --coverlet --coverlet-output-format cobertura
+```
+
 ## Validação automática
 
 O workflow `.github/workflows/validation.yml` executa automaticamente em pull requests e pushes para a branch `main`.
 
-Ele valida a mesma sequência esperada para desenvolvimento local:
+Entre as verificações atuais estão:
 
-1. restauração das dependências;
-2. compilação em `Release`;
-3. execução dos testes.
-
-Essa validação inicial existe para garantir que a baseline do template permaneça funcional enquanto as demais capacidades são adicionadas.
+1. restauração e listagem das ferramentas locais;
+2. restore de dependências em `--locked-mode`;
+3. políticas compartilhadas de build e Central Package Management;
+4. formatação;
+5. build em `Release`;
+6. testes via Microsoft Testing Platform;
+7. cobertura com Coverlet MTP;
+8. line endings e limpeza da árvore de trabalho.
 
 ## Convenção de nomes
 
@@ -86,23 +133,7 @@ Essa validação inicial existe para garantir que a baseline do template permane
 
 ## Roadmap
 
-O desenvolvimento do template está organizado nas issues do repositório. A versão 1.0 deverá incluir, entre outros itens:
-
-- padronização de `.editorconfig`, `.gitattributes` e `.gitignore`;
-- `Directory.Build.props`;
-- Central Package Management;
-- ferramentas locais .NET;
-- empacotamento NuGet, símbolos e Source Link;
-- documentação e governança;
-- Dependabot;
-- CI completa com coverage e pack;
-- CodeQL e Dependency Review;
-- workflow de release;
-- parametrização via `dotnet new`;
-- validação end-to-end do projeto gerado;
-- configuração do repositório como GitHub Template.
-
-A issue [#20](https://github.com/rodri-oliveira-dev/dotnet-library-template/issues/20) centraliza a ordem e a definição de pronto dessas entregas.
+O desenvolvimento do template está organizado nas issues do repositório. A issue [#20](https://github.com/rodri-oliveira-dev/dotnet-library-template/issues/20) centraliza a ordem e a definição de pronto da versão 1.0.
 
 ## Princípio do projeto
 

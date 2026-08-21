@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Restore bloqueado, CPM, formatação, build e testes
+    name: Tooling, restore bloqueado, CPM, formatação, build e testes
     runs-on: ubuntu-latest
 
     steps:
@@ -24,6 +24,12 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
+      - name: Restaurar ferramentas locais
+        run: dotnet tool restore
+
+      - name: Listar ferramentas locais
+        run: dotnet tool list --local
 
       - name: Restaurar dependências em locked mode
         run: dotnet restore Template.Library.slnx --locked-mode
