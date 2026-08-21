@@ -1,3 +1,5 @@
+using AwesomeAssertions;
+using NSubstitute;
 using Template.Library;
 using Xunit;
 
@@ -10,6 +12,20 @@ public sealed class Class1Tests
     {
         var instance = new Class1();
 
-        Assert.NotNull(instance);
+        instance.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void SupportsSubstitutesInTests()
+    {
+        var dependency = Substitute.For<IValueProvider>();
+        dependency.GetValue().Returns("expected");
+
+        dependency.GetValue().Should().Be("expected");
+    }
+
+    public interface IValueProvider
+    {
+        string GetValue();
     }
 }
