@@ -55,7 +55,7 @@ For most new projects, prefer **`dotnet new`**.
 - base version centralized in `Directory.Build.props`;
 - validation of package and assembly version metadata;
 - Git-tag-driven releases;
-- NuGet.org Trusted Publishing through GitHub OIDC;
+- NuGet.org Trusted Publishing through GitHub OIDC with `NUGET_USER` as an explicit publication opt-in;
 - GitHub Release creation after successful publication of a real package.
 
 ### Security and governance
@@ -139,8 +139,7 @@ Before the first release of a library created from the GitHub Template:
 - customize package description and metadata;
 - review the base version in `Directory.Build.props`;
 - review README, license, and public metadata;
-- configure NuGet.org Trusted Publishing for `.github/workflows/release.yml`;
-- configure the `NUGET_USER` repository variable;
+- if NuGet.org publication is desired, configure Trusted Publishing for `.github/workflows/release.yml` and the `NUGET_USER` repository variable;
 - configure `SONAR_TOKEN` if SonarQube Cloud should be enabled;
 - configure a ruleset or branch protection for `main`;
 - review default GitHub Actions permissions;
@@ -171,7 +170,7 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --expected-version 1.0.0
 ```
 
-Maintenance workflows additionally validate end-to-end generation, the versioning contract, and the optional SonarQube Cloud integration.
+Maintenance workflows additionally validate end-to-end generation, the versioning contract, optional SonarQube Cloud integration, and the NuGet publication opt-in decision matrix.
 
 ## Versioning and releases
 
@@ -197,10 +196,14 @@ v1.3.0-beta.1   -> Version 1.3.0-beta.1
 
 ### NuGet.org Trusted Publishing
 
-To publish a real package:
+NuGet.org publication is explicitly **opt-in**. To enable it for a real package:
 
 1. create a Trusted Publishing policy on nuget.org targeting `release.yml`;
 2. configure the `NUGET_USER` repository variable with the nuget.org profile name.
+
+`NUGET_USER` also acts as the publication-enablement flag. The workflow centralizes the decision in `nuget-publishing-enabled`, which is true only for a real tag release, a non-placeholder `PackageId`, and a non-empty `NUGET_USER` value.
+
+If `NUGET_USER` is absent, empty, or contains only whitespace, build, tests, pack, and validation continue normally while the publication job is skipped. In that state, `NuGet/login@v1` is not started, no publication OIDC credential is requested, and `dotnet nuget push` is not executed. For real packages, the GitHub Release with package artifacts is also skipped, preserving the guarantee that no partial release is created.
 
 The template does not use a long-lived `NUGET_API_KEY`.
 
@@ -208,7 +211,7 @@ The template does not use a long-lived `NUGET_API_KEY`.
 
 The source repository uses `Template.Library` as its neutral identity. The release workflow detects that identity and blocks accidental publication to NuGet.org.
 
-The template repository can still create versioned GitHub Releases, but it does not publish or attach the placeholder package. In projects generated through `dotnet new`, `PackageId` is replaced with the real library name and publication becomes available after Trusted Publishing is configured.
+The template repository can still create versioned GitHub Releases, even without `NUGET_USER`, but it does not publish or attach the placeholder package. In projects generated through `dotnet new`, `PackageId` is replaced with the real library name and publication becomes available only after Trusted Publishing and `NUGET_USER` are configured.
 
 ## Security and quality
 
@@ -224,6 +227,7 @@ The main workflows have separate responsibilities:
 | `template-validation.yml` | end-to-end `dotnet new` validation |
 | `sonar-template-validation.yml` | validates the Sonar contract in generated output |
 | `versioning-validation.yml` | validates the SemVer and package/assembly metadata contract |
+| `release-publishing-validation.yml` | maintenance-only validation of the NuGet publication opt-in matrix |
 
 Keeping these concerns separate makes build, security, external-analysis, generation, and release failures independently diagnosable.
 
@@ -282,6 +286,7 @@ Template-maintenance-only content is excluded, including:
 │   ├── repository-administration.md
 │   └── template-development.md
 ├── scripts/
+│   ├── resolve-nuget-publishing.sh
 │   └── verify-package.cs
 ├── src/
 │   └── Template.Library/
