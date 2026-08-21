@@ -244,6 +244,7 @@ jobs:
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
         shell: bash
         run: |
@@ -253,6 +254,7 @@ jobs:
           fi
 
           gh release create "$RELEASE_TAG" \
+            --repo "$GH_REPO" \
             artifacts/packages/*.nupkg \
             artifacts/packages/*.snupkg \
             "${release_args[@]}"
@@ -261,6 +263,7 @@ jobs:
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
         shell: bash
         run: |
@@ -269,4 +272,4 @@ jobs:
             release_args+=(--prerelease)
           fi
 
-          gh release create "$RELEASE_TAG" "${release_args[@]}"
+          gh release create "$RELEASE_TAG" --repo "$GH_REPO" "${release_args[@]}"
