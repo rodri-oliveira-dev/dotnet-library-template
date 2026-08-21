@@ -13,13 +13,13 @@ permissions:
 
 jobs:
   audit:
-    name: Query open Sonar security issues
+    name: Query PR Sonar security issues
     runs-on: ubuntu-latest
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: rodri-oliveira-dev_dotnet-library-template
     steps:
-      - name: Query SonarQube Cloud API
+      - name: Query SonarQube Cloud API for PR 50
         shell: bash
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
@@ -31,7 +31,7 @@ jobs:
             --user "$SONAR_TOKEN:" \
             --get 'https://sonarcloud.io/api/issues/search' \
             --data-urlencode "componentKeys=$SONAR_PROJECT_KEY" \
-            --data-urlencode 'branch=main' \
+            --data-urlencode 'pullRequest=50' \
             --data-urlencode 'issueStatuses=OPEN,CONFIRMED' \
             --data-urlencode 'impactSoftwareQualities=SECURITY' \
             --data-urlencode 'ps=500' \
@@ -40,14 +40,20 @@ jobs:
           jq '{total, issues: [.issues[] | {key, rule, component, project, line, message, severity, impacts, status, cleanCodeAttribute, creationDate, updateDate}]}' \
             sonar-issues.raw.json > sonar-security-issues.json
 
-          echo '--- Sonar security issues ---'
+          echo '--- Sonar Security findings on PR 50 ---'
           jq -r '.issues[] | [.key, .rule, .component, (.line // 0), .severity, .status, .message] | @tsv' sonar-security-issues.json
-          echo "Total: $(jq -r '.total' sonar-security-issues.json)"
+          total="$(jq -r '.total' sonar-security-issues.json)"
+          echo "Total: $total"
+
+          if [ "$total" != '0' ]; then
+            echo '::error::PR 50 still has open/confirmed Security findings.'
+            exit 1
+          fi
 
       - name: Upload sanitized audit
         uses: actions/upload-artifact@v7
         with:
-          name: sonar-security-issues
+          name: sonar-security-issues-pr50
           path: sonar-security-issues.json
           if-no-files-found: error
           retention-days: 1
