@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to validate (for example v1.0.0 or v1.1.0-beta.1)'
+        description: 'Release version (for example v1.0.0 or v1.1.0-beta.1)'
         required: true
         type: string
 
@@ -25,6 +25,7 @@ jobs:
       package-version: ${{ steps.version.outputs.package_version }}
       release-tag: ${{ steps.version.outputs.release_tag }}
       should-publish: ${{ steps.version.outputs.should_publish }}
+      is-manual-release: ${{ steps.version.outputs.is_manual_release }}
       safe-to-publish: ${{ steps.package.outputs.safe_to_publish }}
       nuget-publishing-enabled: ${{ steps.nuget-publishing.outputs.nuget_publishing_enabled }}
       nuget-publishing-reason: ${{ steps.nuget-publishing.outputs.nuget_publishing_reason }}
@@ -40,31 +41,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Validate release version
+      - name: Validate release request
         id: version
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           MANUAL_VERSION: ${{ inputs.version }}
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
-            release_tag="$MANUAL_VERSION"
-            should_publish=false
-          else
-            release_tag="$GITHUB_REF_NAME"
-            should_publish=true
-          fi
-
-          semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
-
-          if [[ ! "$release_tag" =~ $semver_regex ]]; then
-            echo "::error::Release version '$release_tag' must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
-            exit 1
-          fi
-
-          package_version="${release_tag#v}"
-          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "should_publish=$should_publish" >> "$GITHUB_OUTPUT"
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          RELEASE_BRANCH: main
+        run: bash scripts/resolve-release-request.sh
 
       - name: Restore local tools
         run: dotnet tool restore
@@ -169,9 +155,32 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  ensure-release-tag:
+    name: Ensure release tag
+    needs: build-and-pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create or verify release tag
+        shell: bash
+        env:
+          IS_MANUAL_RELEASE: ${{ needs.build-and-pack.outputs.is-manual-release }}
+          RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
+          VALIDATED_SHA: ${{ github.sha }}
+        run: bash scripts/ensure-release-tag.sh
+
   publish-nuget:
     name: Publish to NuGet.org
-    needs: build-and-pack
+    needs:
+      - build-and-pack
+      - ensure-release-tag
     if: needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -209,31 +218,29 @@ jobs:
     name: Create GitHub Release
     needs:
       - build-and-pack
+      - ensure-release-tag
       - publish-nuget
     if: >-
       always() &&
       needs.build-and-pack.result == 'success' &&
-      needs.build-and-pack.outputs.should-publish == 'true' &&
+      needs.ensure-release-tag.result == 'success' &&
       (
-        needs.build-and-pack.outputs.safe-to-publish == 'false' ||
-        (
-          needs.build-and-pack.outputs.nuget-publishing-enabled == 'true' &&
-          needs.publish-nuget.result == 'success'
-        )
+        needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||
+        needs.publish-nuget.result == 'success'
       )
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download published package artifacts
+      - name: Download package artifacts
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: release-packages
           path: artifacts/packages
 
-      - name: Create GitHub Release with NuGet artifacts
+      - name: Create GitHub Release with package artifacts
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}

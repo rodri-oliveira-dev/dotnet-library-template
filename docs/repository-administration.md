@@ -53,7 +53,7 @@ The expected default branch is:
 main
 ```
 
-Workflows, rulesets, documentation, and release instructions assume this branch unless a future architectural decision changes the baseline consistently across the repository.
+Workflows, rulesets, documentation, and release instructions assume this branch. Manual releases are intentionally restricted to `main` so the tag created by the release workflow cannot accidentally point to a feature branch.
 
 ## GitHub Actions permissions
 
@@ -71,8 +71,9 @@ Current design examples:
 
 - CI and template validation require read-only repository contents;
 - CodeQL adds `security-events: write`;
-- NuGet Trusted Publishing adds `id-token: write` only to the publishing path;
-- GitHub Release creation adds `contents: write` only where release creation requires it.
+- the release tag gate adds `contents: write` only to the job that creates/verifies the release tag;
+- NuGet Trusted Publishing adds `id-token: write` only to the NuGet publishing path;
+- GitHub Release creation adds `contents: write` only to the GitHub Release job.
 
 ### Verification
 
@@ -126,8 +127,6 @@ Before editing the ruleset, verify the names against a recent pull request. If a
 
 Do not require release-only jobs on pull requests. `.github/workflows/release.yml` is release automation, not a pull-request gate.
 
-When GitHub offers an expected-source selector for a required check, prefer the GitHub Actions app for checks emitted by these workflows.
-
 ## Security and analysis
 
 Under the repository security settings, enable and verify the features appropriate for a public source repository.
@@ -150,14 +149,46 @@ The repository also keeps defense in depth through versioned automation:
 
 Versioned workflows do not replace repository-side security settings where GitHub requires an administrative switch.
 
+## Release administration
+
+Manual releases are started from **Actions > Release > Run workflow** with branch `main` and a SemVer value such as `v1.2.0`.
+
+The workflow validates that the requested tag does not already exist, then performs build/test/pack/package validation. Only after those gates succeed does the release job create the tag at the exact validated SHA. This requires `contents: write` only on the tag-management job; the repository-wide default should remain read-only.
+
+Tag-triggered releases remain supported. In that path, the workflow verifies that the incoming tag resolves to the same SHA being validated.
+
 ## NuGet.org Trusted Publishing
 
-The source template contains a reusable release workflow based on GitHub OIDC and NuGet.org Trusted Publishing.
+The source template contains a reusable release workflow based on GitHub OIDC and NuGet.org Trusted Publishing. NuGet publication is optional and is enabled by the `NUGET_USER` **Repository Variable**.
 
-For a repository that publishes a real package, configure:
+### Configure `NUGET_USER`
 
-1. a NuGet.org Trusted Publishing policy targeting `.github/workflows/release.yml`;
-2. the GitHub repository variable `NUGET_USER` with the relevant nuget.org profile name.
+If `NUGET_USER` does not exist in a repository that should publish to NuGet.org:
+
+1. open the repository on GitHub;
+2. go to **Settings**;
+3. open **Secrets and variables** → **Actions**;
+4. select the **Variables** tab;
+5. click **New repository variable**;
+6. set **Name** to `NUGET_USER`;
+7. set **Value** to the nuget.org profile name/username used by the Trusted Publishing policy;
+8. save the variable.
+
+`NUGET_USER` is not a secret and should not be configured under the **Secrets** tab. If the variable is absent, empty, or whitespace-only, NuGet publication is intentionally disabled; the workflow does not run `NuGet/login` or `dotnet nuget push`, but tag and GitHub Release creation remain available.
+
+### Configure the nuget.org trust policy
+
+For a repository that publishes a real package:
+
+1. create a NuGet.org Trusted Publishing policy for the GitHub repository;
+2. target the workflow file:
+
+   ```text
+   .github/workflows/release.yml
+   ```
+
+3. ensure the policy/profile matches the value stored in `NUGET_USER`;
+4. validate package ownership/permissions before the first production release.
 
 Do not add a long-lived `NUGET_API_KEY` merely to bypass Trusted Publishing.
 
@@ -215,6 +246,8 @@ Use this checklist when auditing the source repository or preparing a release th
 - [ ] Dependabot alerts and intended security updates are enabled.
 - [ ] Secret scanning and push protection are enabled where available.
 - [ ] CodeQL/code scanning is producing results.
+- [ ] Manual release tag creation has only job-scoped `contents: write`.
+- [ ] `NUGET_USER` is configured under **Actions > Variables** when NuGet publication is intended.
 - [ ] Trusted Publishing configuration is valid before publishing a real NuGet package.
 - [ ] Optional external integrations use repository secrets/variables rather than committed credentials.
 

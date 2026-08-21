@@ -32,7 +32,7 @@ Keep the parameter surface intentionally small. Add a new parameter only when th
 
 ## Generated content versus maintenance-only content
 
-Most versioned files belong in generated libraries: source, tests, shared build/version policies, Central Package Management, package lock files, governance files, CI/security/quality/release workflows, local tool manifests, and package verification tooling.
+Most versioned files belong in generated libraries: source, tests, shared build/version policies, Central Package Management, package lock files, governance files, CI/security/quality/release workflows, local tool manifests, agent instructions, release helper scripts, and package verification tooling.
 
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
@@ -40,9 +40,10 @@ The following content exists only to maintain the source template and is exclude
 - `.github/workflows/template-validation.yml`;
 - `.github/workflows/sonar-template-validation.yml`;
 - `.github/workflows/versioning-validation.yml`;
+- `.github/workflows/release-publishing-validation.yml`;
 - `docs/template-development.md`;
 - `docs/repository-administration.md`;
-- the template repository `README.md`.
+- the template repository `README.md` and `README.en.md`.
 
 `docs/library-readme.md` is source content for generated projects. During generation it is renamed to `README.md`, so users of a generated library receive project-oriented documentation instead of maintenance instructions for the source template.
 
@@ -58,7 +59,7 @@ When adding a file, decide which category it belongs to:
 
 Do not globally exclude `packages.lock.json`. The generated project is expected to support `dotnet restore --locked-mode` immediately.
 
-After changing includes, excludes, renames, or reusable workflows, run the generation validation before opening a pull request.
+After changing includes, excludes, renames, reusable workflows, or release helper scripts, run the generation validation before opening a pull request.
 
 ## Validate the source repository
 
@@ -141,11 +142,13 @@ Version        = 1.0.0
 PackageVersion = 1.0.0
 ```
 
-Published releases use the Git tag as source of truth. `release.yml` validates `vMAJOR.MINOR.PATCH[-prerelease]`, removes only the leading `v`, and passes exactly one release override:
+Releases use the Git tag as source of truth. `release.yml` validates `vMAJOR.MINOR.PATCH[-prerelease]`, removes only the leading `v`, and passes exactly one release override:
 
 ```text
 -p:Version=<tag-without-v>
 ```
+
+For `workflow_dispatch`, the requested release version becomes the future tag value but the tag itself is not created until build, tests, pack, and package verification have succeeded. For a tag-triggered release, the existing tag must resolve to the same SHA being validated.
 
 Do not reintroduce an independent `-p:PackageVersion` override. The SDK derives package and assembly metadata from `Version`; having two independent overrides creates competing version sources.
 
@@ -163,13 +166,14 @@ The expected .NET metadata contract is:
 
 `InformationalVersion` may append deterministic source revision metadata with a `+` suffix.
 
-`scripts/verify-package.cs --expected-version` validates all of those values from the packaged artifact itself, not only the filename. A mismatch must fail before any external authentication or publication.
+`scripts/verify-package.cs --expected-version` validates all of those values from the packaged artifact itself, not only the filename. A mismatch must fail before a manual release tag is created and before any external authentication or publication.
 
 `.github/workflows/versioning-validation.yml` is maintenance-only and proves:
 
 - base version `1.0.0` resolves from one shared source;
 - no project-level duplicate version properties exist;
 - a generated `Validation.SampleLibrary` inherits the version contract;
+- reusable release helper scripts are copied to the generated project;
 - stable `1.2.3` produces matching `.nupkg`/`.snupkg` plus assembly metadata;
 - prerelease `1.3.0-beta.1` behaves equivalently;
 - an expected-version mismatch is rejected;
@@ -179,14 +183,25 @@ Keep the versioning validation workflow excluded in `.template.config/template.j
 
 ## Release workflow
 
-`.github/workflows/release.yml` is reusable generated-project content. It has two activation modes:
+`.github/workflows/release.yml` is reusable generated-project content. It has two real-release activation modes:
 
-- a pushed SemVer tag (`vMAJOR.MINOR.PATCH` or prerelease) is a real release;
-- `workflow_dispatch` requires an explicit version and is always a dry-run.
+- `workflow_dispatch` from branch `main`, with an explicit SemVer release version;
+- a pushed SemVer tag (`vMAJOR.MINOR.PATCH` or prerelease).
 
 The first baseline release version is `1.0.0`, corresponding to tag `v1.0.0`.
 
-The build job validates the tag, restores in locked mode, resolves package identity and MSBuild `Version`/`PackageVersion`, builds, tests, packs using the tag-derived `Version`, then runs:
+### Manual release contract
+
+The manual flow is designed so an invalid commit cannot acquire a release tag merely because the workflow was started.
+
+`scripts/resolve-release-request.sh` validates the request before expensive work begins:
+
+- event must be supported;
+- `workflow_dispatch` must execute from branch `main`;
+- the requested version must match `vMAJOR.MINOR.PATCH[-prerelease]`;
+- the requested tag must not already exist remotely.
+
+The build job then restores in locked mode, resolves package identity and MSBuild `Version`/`PackageVersion`, builds, tests, packs using the requested release version, and runs:
 
 ```bash
 dotnet run --file scripts/verify-package.cs -- artifacts/packages \
@@ -194,7 +209,53 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --expected-version <version-without-v>
 ```
 
-Real publication uses NuGet.org Trusted Publishing via GitHub OIDC and `NuGet/login@v1`. The generated repository must configure a Trusted Publishing policy for `release.yml` and a repository variable named `NUGET_USER` with the nuget.org profile name.
+Only after those steps succeed does the `ensure-release-tag` job receive `contents: write`. `scripts/ensure-release-tag.sh` performs a second remote tag-existence check to protect against races, creates the tag at exactly `${{ github.sha }}`, and pushes that tag.
+
+This ordering is part of the release integrity contract:
+
+```text
+request validation
+→ restore/build/test/pack/package validation
+→ create/verify release tag
+→ optional NuGet publication
+→ GitHub Release
+```
+
+Do not move tag creation earlier in the pipeline.
+
+### Existing-tag release contract
+
+For a workflow triggered by a pushed SemVer tag, the workflow does not recreate the tag. After validating the package, `scripts/ensure-release-tag.sh` verifies that the existing tag resolves to the same `github.sha` validated by the run. A mismatch must stop publication.
+
+### NuGet publication opt-in
+
+NuGet.org publication uses Trusted Publishing through GitHub OIDC and `NuGet/login@v1`, but it is optional.
+
+`NUGET_USER` is a GitHub **Repository Variable** and serves two purposes:
+
+- the nuget.org profile name used by Trusted Publishing;
+- the explicit feature flag that enables NuGet publication.
+
+For repositories that should publish to NuGet.org, configure it in GitHub under:
+
+```text
+Settings
+→ Secrets and variables
+→ Actions
+→ Variables
+→ New repository variable
+```
+
+with name `NUGET_USER` and the nuget.org profile name/username as the value. The corresponding nuget.org Trusted Publishing policy must target `.github/workflows/release.yml`.
+
+When `NUGET_USER` is absent, empty, or whitespace-only, `NuGet/login` and `dotnet nuget push` must not run. This state does **not** disable release versioning: the tag and GitHub Release still proceed.
+
+For a real non-placeholder package, GitHub Release behavior is:
+
+- NuGet disabled: create the GitHub Release and attach `.nupkg`/`.snupkg` after the tag gate succeeds;
+- NuGet enabled: publish to NuGet first, then create the GitHub Release only if NuGet publication succeeds.
+
+This preserves independent GitHub Releases while preventing the repository from advertising a successful NuGet distribution after a failed NuGet publication.
 
 The template intentionally does **not** store or request a long-lived `NUGET_API_KEY`.
 
@@ -206,13 +267,13 @@ The source template must be able to create versioned GitHub Releases without eve
 
 This gives the desired behavior:
 
-- in the source template, `PackageId` is the placeholder, so `safe-to-publish=false`; NuGet publication is skipped, but the pushed SemVer tag still creates a GitHub Release without `.nupkg`/`.snupkg` attachments;
+- in the source template, `PackageId` is the placeholder, so `safe-to-publish=false`; tag creation/verification and GitHub Release remain allowed, but NuGet publication and `.nupkg`/`.snupkg` release attachments are skipped;
 - in a direct GitHub Template copy that has not yet been renamed, the same protection remains active: GitHub Release is allowed, placeholder NuGet publication and package attachments are not;
-- in a project created via `dotnet new`, the project/package identity is replaced with the generated library name, while the neutral comparison remains unchanged, so publication is allowed after Trusted Publishing is configured.
+- in a project created via `dotnet new`, the project/package identity is replaced with the generated library name, while the neutral comparison remains unchanged, so GitHub Release artifacts are allowed and NuGet publication is additionally available after Trusted Publishing plus `NUGET_USER` are configured.
 
-The `github-release` job uses `always()` because `publish-nuget` is expected to be `skipped` for the placeholder path. For a real package (`safe-to-publish=true`), GitHub Release still requires `publish-nuget.result == 'success'` and attaches the generated `.nupkg`/`.snupkg`. For the placeholder path, it creates only the GitHub Release metadata/release notes.
+The `github-release` job uses `always()` because `publish-nuget` is expected to be `skipped` whenever NuGet publication is disabled. It requires successful build/package validation and a successful release-tag gate. If NuGet publication is enabled, it additionally requires `publish-nuget.result == 'success'`.
 
-This mechanism blocks the source package without embedding repository-specific metadata in reusable output, while still allowing this template repository to publish releases such as `v1.0.0`.
+This mechanism blocks the source package without embedding repository-specific metadata in reusable output, while still allowing this template repository to publish releases such as `v1.0.0` directly from GitHub Actions.
 
 ## Install the template locally
 
@@ -281,9 +342,22 @@ A valid generated project must not contain unintended matches.
 
 `.github/workflows/sonar-template-validation.yml` complements that E2E with the optional external-quality contract: scanner version, opt-in behavior, reusable Sonar workflow generation, coordinate parametrization, OpenCover configuration, absence of source identity leakage, and build/test of the generated sample.
 
-`.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, packaged assembly metadata, and a negative mismatch case.
+`.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, packaged assembly metadata, release helper propagation, and a negative mismatch case.
 
-Release changes must additionally confirm that `release.yml` is copied to generated projects, that project paths inside it follow the generated identity, that the neutral placeholder guard remains intact, that the placeholder route can create GitHub Release without package artifacts, that real-package GitHub Release remains gated on successful NuGet publication, and that no source-repository name or ID is introduced into the generated workflow.
+`.github/workflows/release-publishing-validation.yml` is maintenance-only. It validates the release workflow contract and uses temporary Git repositories to exercise manual-request validation, rejection outside `main`, existing-tag collision, exact-SHA tag creation, tag/SHA mismatch rejection, the `NUGET_USER` decision matrix, and propagation of the reusable release flow into a generated library.
+
+Release changes must additionally confirm that:
+
+- `release.yml`, `scripts/resolve-release-request.sh`, `scripts/ensure-release-tag.sh`, and `scripts/resolve-nuget-publishing.sh` are copied to generated projects;
+- project paths inside the workflow follow the generated identity;
+- manual releases cannot create a tag before package validation succeeds;
+- the created tag targets the exact validated SHA;
+- duplicate/concurrent tag creation is rejected;
+- the neutral placeholder guard remains intact;
+- the placeholder route can create GitHub Release without package artifacts;
+- real-package GitHub Release works when NuGet is disabled;
+- when NuGet is enabled, real-package GitHub Release remains gated on successful NuGet publication;
+- no source-repository name or ID is introduced into the generated workflow.
 
 Versioning changes must confirm that `Directory.Build.props` remains the sole baseline version source, generated projects retain `VersionPrefix=1.0.0`, release uses only `Version` as the override, and stable/prerelease package metadata remains coherent.
 
@@ -318,4 +392,4 @@ The automated workflows also attempt to uninstall the template at the end so the
 
 ## Documentation checks
 
-When commands, paths, generated content, versioning, repository settings, workflows, external quality integration, release authentication, or template exclusions change, update both the root README and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.
+When commands, paths, generated content, versioning, repository settings, workflows, external quality integration, release authentication, release tag handling, or template exclusions change, update the relevant root README/documentation and this document in the same pull request. Keep the root README focused on consuming the template; keep implementation details here.
