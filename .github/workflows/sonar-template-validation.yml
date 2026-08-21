@@ -16,6 +16,7 @@ jobs:
   disabled-contract:
     name: Validar Sonar sem token
     runs-on: ubuntu-latest
+    permissions: {}
     env:
       SONAR_TOKEN: ''
 
