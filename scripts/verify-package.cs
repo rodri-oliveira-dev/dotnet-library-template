@@ -1,3 +1,5 @@
+#:property RestorePackagesWithLockFile=false
+
 using System.IO.Compression;
 using System.Reflection.Metadata;
 using System.Text;
