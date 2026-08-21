@@ -1,81 +1,112 @@
 # Source repository administration
 
-This document defines the administrative baseline for the source template repository. It is maintenance-only and must not be copied into projects generated with `dotnet new rodri-lib`.
+This document defines the **desired administrative baseline** for the source template repository.
 
-Repository settings are not stored in Git. This file therefore documents the desired state and the verification procedure for settings that must be applied directly in GitHub.
+It is maintenance-only content and must not be copied into projects generated with `dotnet new rodri-lib`.
 
-## Audited source repository
+Repository settings are not fully represented in Git. This document therefore describes the expected state and how to verify it, rather than recording a point-in-time audit result. Evidence from a specific audit belongs in the relevant issue or pull request so this document does not become stale when settings change.
 
-Repository:
+## Scope
+
+This baseline applies to:
 
 ```text
 rodri-oliveira-dev/dotnet-library-template
 ```
 
-The issue #18 audit confirmed on 2026-08-21:
+It covers settings that require GitHub-side configuration, including:
 
-- the repository is public;
-- `is_template` is enabled, so the repository is a GitHub Template Repository;
-- `main` is the default branch;
-- `main` is currently reported by the GitHub API as `protected: false`.
+- GitHub Template Repository status;
+- default branch;
+- GitHub Actions default permissions;
+- branch rulesets/protection;
+- repository security features;
+- settings required for optional external integrations;
+- settings that generated repositories must configure independently.
 
-The missing branch ruleset/protection is therefore an explicit blocker for considering issue #18 complete.
+## Guiding principles
+
+Administrative configuration should follow four rules:
+
+1. **Least privilege** — repository-wide permissions remain restrictive and individual workflows request only the permissions they need.
+2. **Pull-request-first changes** — changes to `main` should normally pass through pull requests and required checks.
+3. **Versioned policy where possible** — behavior that can be expressed in workflows or repository files should live in Git; only settings that inherently live in GitHub remain administrative.
+4. **No inheritance assumptions** — repositories created from this template must explicitly configure their own secrets, variables, rulesets, environments, and publishing trust relationships.
 
 ## GitHub Template Repository
 
 In **Settings > General**, keep **Template repository** enabled.
 
-Verification:
+Verify:
 
 - the repository API reports `is_template: true`;
 - the repository page exposes **Use this template**;
 - `main` remains the default branch.
 
-Do not assume this setting is inherited by repositories created from this template. A generated repository is an independent repository with its own administrative settings.
+This setting is specific to the source repository. Do not assume a repository created from the template should itself become a GitHub Template Repository.
+
+## Default branch
+
+The expected default branch is:
+
+```text
+main
+```
+
+Workflows, rulesets, documentation, and release instructions assume this branch unless a future architectural decision changes the baseline consistently across the repository.
 
 ## GitHub Actions permissions
 
-In **Settings > Actions > General > Workflow permissions**, use the restrictive repository default:
+In **Settings > Actions > General > Workflow permissions**, prefer the restrictive repository default equivalent to:
 
 ```text
 Read repository contents and packages permissions
 ```
 
-Do not enable a repository-wide write token merely to make a workflow easier to implement. Workflows in this repository declare additional permissions explicitly where required:
+Keep **Allow GitHub Actions to create and approve pull requests** disabled unless a future workflow has a documented requirement for it.
 
-- CI and template validation use read-only contents access;
+Do not grant repository-wide write permissions to simplify one workflow. Workflows must request additional permissions explicitly and only at the job/workflow scope that needs them.
+
+Current design examples:
+
+- CI and template validation require read-only repository contents;
 - CodeQL adds `security-events: write`;
-- release publication adds `id-token: write` only to the NuGet publishing job;
-- GitHub Release creation adds `contents: write` only to the release job.
+- NuGet Trusted Publishing adds `id-token: write` only to the publishing path;
+- GitHub Release creation adds `contents: write` only where release creation requires it.
 
-Keep **Allow GitHub Actions to create and approve pull requests** disabled unless a future workflow has a documented need for it.
+### Verification
 
-Because this setting is administrative and is not exposed by the connected repository tooling used for the v1.0 audit, verify it directly in GitHub before closing issue #18.
+Review both:
 
-## `main` ruleset
+1. the repository-level workflow permission setting in GitHub;
+2. `permissions:` blocks in every workflow that requires elevated access.
 
-Create an active branch ruleset named:
+A new workflow with broad write permissions should be treated as a security-sensitive change and reviewed accordingly.
+
+## `main` ruleset / branch protection
+
+Protect the default branch with an active ruleset or equivalent branch protection policy.
+
+A recommended ruleset name is:
 
 ```text
 main-protection
 ```
 
-Target the default branch (`main`).
-
 Recommended baseline:
 
-1. Require a pull request before merging.
-2. For a solo-maintained repository, keep required approving reviews at `0`; increase this when independent reviewers are available.
-3. Require status checks to pass before merging.
-4. Require the branch to be up to date before merging.
-5. Block force pushes.
-6. Restrict deletion of the protected branch.
+1. Require changes through pull requests.
+2. Require status checks before merging.
+3. Require the branch to be up to date before merging when appropriate for the repository workflow.
+4. Block force pushes.
+5. Restrict deletion of the protected branch.
+6. Require approving reviews when independent reviewers are available.
 
-### Required status checks for the source template
+For a solo-maintained repository, zero required approving reviews can be acceptable while still enforcing pull requests and automated checks. Increase the review requirement when the maintenance model changes.
 
-Use the **job names** emitted by the workflows, because GitHub rulesets require the status-check name exactly as published.
+### Required status checks
 
-Require:
+Rulesets require the exact status-check names emitted by GitHub Actions. The current core pull-request gates are expected to include:
 
 ```text
 Restore, build, test, coverage e pack
@@ -84,63 +115,113 @@ Revisar alterações de dependências
 Gerar e validar Validation.SampleLibrary
 ```
 
-They correspond to:
+These correspond to:
 
 - `.github/workflows/ci.yml`;
 - `.github/workflows/codeql.yml`;
 - `.github/workflows/dependency-review.yml`;
 - `.github/workflows/template-validation.yml`.
 
-Do not require release jobs on pull requests: `.github/workflows/release.yml` is tag/manual-release automation, not a pull-request gate.
+Before editing the ruleset, verify the names against a recent pull request. If a workflow job is renamed, update the ruleset and this document in the same change window so merges are not accidentally blocked or left unprotected.
 
-When configuring a required status check, prefer the GitHub Actions app as the expected source when GitHub offers that choice.
+Do not require release-only jobs on pull requests. `.github/workflows/release.yml` is release automation, not a pull-request gate.
+
+When GitHub offers an expected-source selector for a required check, prefer the GitHub Actions app for checks emitted by these workflows.
 
 ## Security and analysis
 
-For this public repository, verify the following under **Settings > Advanced Security** or the equivalent current GitHub security settings:
+Under the repository security settings, enable and verify the features appropriate for a public source repository.
 
-- Dependency graph is available;
-- Dependabot alerts are enabled;
-- Dependabot security updates are enabled unless there is a documented reason not to use them;
-- secret scanning is enabled;
-- push protection is enabled;
-- code scanning is enabled and receiving results from `.github/workflows/codeql.yml`.
+Expected baseline:
 
-The repository also keeps defense-in-depth in versioned automation:
+- Dependency graph available;
+- Dependabot alerts enabled;
+- Dependabot security updates enabled unless there is a documented reason to disable them;
+- secret scanning enabled;
+- push protection enabled when available;
+- code scanning enabled and receiving CodeQL results.
 
-- NuGet Audit fails the build for High/Critical vulnerabilities;
-- Dependency Review blocks new High/Critical vulnerable dependencies in pull requests;
-- CodeQL scans C# on pull requests, pushes to `main`, and weekly;
+The repository also keeps defense in depth through versioned automation:
+
+- NuGet Audit fails for High/Critical vulnerabilities according to the shared build policy;
+- Dependency Review blocks newly introduced High/Critical vulnerable dependencies in pull requests;
+- CodeQL scans C# on pull requests, pushes to `main`, and on its scheduled run;
 - Dependabot version updates are configured for NuGet and GitHub Actions.
 
-Do not treat versioned workflows as a substitute for enabling the corresponding repository security features where GitHub requires an administrative setting.
+Versioned workflows do not replace repository-side security settings where GitHub requires an administrative switch.
+
+## NuGet.org Trusted Publishing
+
+The source template contains a reusable release workflow based on GitHub OIDC and NuGet.org Trusted Publishing.
+
+For a repository that publishes a real package, configure:
+
+1. a NuGet.org Trusted Publishing policy targeting `.github/workflows/release.yml`;
+2. the GitHub repository variable `NUGET_USER` with the relevant nuget.org profile name.
+
+Do not add a long-lived `NUGET_API_KEY` merely to bypass Trusted Publishing.
+
+The source template intentionally guards its neutral `Template.Library` identity from NuGet publication. That guard is versioned in `release.yml`; the trust policy itself is administrative.
+
+## Optional SonarQube Cloud
+
+SonarQube Cloud is opt-in.
+
+To enable it for a repository, configure:
+
+```text
+SONAR_TOKEN
+```
+
+as a Repository Secret.
+
+When the derived Sonar coordinates do not match the project, configure Repository Variables as needed:
+
+```text
+SONAR_PROJECT_KEY
+SONAR_ORGANIZATION
+SONAR_HOST_URL
+```
+
+Do not store tokens or other credentials in repository files, workflow defaults, documentation examples, or generated project content.
 
 ## Generated repositories
 
-Administrative settings are not inherited by repositories created with **Use this template** or by projects generated with `dotnet new` and later pushed to GitHub.
+Neither GitHub Template Repository copies nor projects generated by `dotnet new` inherit GitHub administrative state.
 
-The generated-project README already contains the post-creation checklist. At minimum, each new repository must review:
+Each new repository must review and configure its own:
 
 - default GitHub Actions workflow permissions;
-- a `main` branch ruleset/protection policy;
-- Dependabot/security settings;
+- `main` ruleset or branch protection;
+- Dependabot and repository security settings;
 - secret scanning and push protection;
-- NuGet.org Trusted Publishing and the `NUGET_USER` repository variable if package publishing is used;
-- environments or deployment protection rules if the project adds deployment workflows.
+- NuGet.org Trusted Publishing and `NUGET_USER` when package publishing is used;
+- `SONAR_TOKEN` and Sonar variables when SonarQube Cloud is enabled;
+- environments and deployment protection rules when the project introduces deployment workflows;
+- any organization-specific policies required by the target environment.
 
-Secrets, repository variables, environments, rulesets, branch protection, Trusted Publishing policies, and other GitHub administrative settings must be configured separately for every new repository.
+Secrets, repository variables, environments, rulesets, branch protection, Trusted Publishing policies, and other GitHub administrative settings must always be treated as repository-specific configuration.
 
-## Verification before closing issue #18
+## Verification procedure
 
-The source repository is ready only when all of the following are true:
+Use this checklist when auditing the source repository or preparing a release that depends on repository settings:
 
-- [x] GitHub Template Repository is enabled.
-- [x] `main` is the default branch.
-- [ ] `main` has an active ruleset/protection matching the baseline above.
-- [ ] default `GITHUB_TOKEN` workflow permissions are verified as read-only.
-- [ ] Dependabot alerts/security updates are verified.
-- [ ] secret scanning and push protection are verified.
+- [ ] Repository is still marked as a GitHub Template Repository.
+- [ ] `main` is still the default branch.
+- [ ] Default `GITHUB_TOKEN` permissions remain restrictive.
+- [ ] `main` has an active ruleset or equivalent protection.
+- [ ] Required status checks match the names emitted by current workflows.
+- [ ] A pull request with a failing required check cannot merge.
+- [ ] Dependabot alerts and intended security updates are enabled.
+- [ ] Secret scanning and push protection are enabled where available.
 - [ ] CodeQL/code scanning is producing results.
-- [ ] a pull request with a required failing check is demonstrably blocked from merge.
+- [ ] Trusted Publishing configuration is valid before publishing a real NuGet package.
+- [ ] Optional external integrations use repository secrets/variables rather than committed credentials.
 
-Do not close issue #18 based only on this document. The unchecked items represent GitHub-side settings that must be observed in the actual repository.
+Record the evidence for a specific verification in the issue, pull request, or release checklist that requested the audit. Keep this document focused on the durable baseline.
+
+## Change-management rule
+
+When a repository-side setting becomes part of the engineering contract, update this document in the same pull request as any corresponding workflow or documentation change.
+
+When only the observed state changes — for example, a ruleset is enabled or an audit is completed — record that evidence outside this file unless the desired baseline itself has changed.
