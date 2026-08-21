@@ -1,0 +1,163 @@
+name: Validação do template
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: template-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generated-project:
+    name: Gerar e validar Validation.SampleLibrary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Instalar template do checkout
+        run: dotnet new install .
+
+      - name: Confirmar registro do template
+        shell: bash
+        run: |
+          listing="$(dotnet new list rodri-lib)"
+          echo "$listing"
+
+          if [[ "$listing" != *"rodri-lib"* ]]; then
+            echo "Template rodri-lib não foi registrado no dotnet new."
+            exit 1
+          fi
+
+      - name: Gerar biblioteca de validação
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/generated-template/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Verificar estrutura gerada
+        shell: bash
+        run: |
+          required=(
+            "Validation.SampleLibrary.slnx"
+            "src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+            "src/Validation.SampleLibrary/packages.lock.json"
+            "tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj"
+            "tests/Validation.SampleLibrary.Tests/packages.lock.json"
+            "README.md"
+            "CONTRIBUTING.md"
+            "CODE_OF_CONDUCT.md"
+            "CHANGELOG.md"
+            ".github/workflows/validation.yml"
+            "scripts/verify-package.cs"
+          )
+
+          for path in "${required[@]}"; do
+            if [ ! -e "$GENERATED_ROOT/$path" ]; then
+              echo "Arquivo esperado não foi gerado: $path"
+              exit 1
+            fi
+          done
+
+          maintenance_only=(
+            ".template.config/template.json"
+            ".github/workflows/template-validation.yml"
+            "docs/template-development.md"
+            "docs/library-readme.md"
+          )
+
+          for path in "${maintenance_only[@]}"; do
+            if [ -e "$GENERATED_ROOT/$path" ]; then
+              echo "Conteúdo exclusivo de manutenção vazou para a saída: $path"
+              exit 1
+            fi
+          done
+
+          grep -Fq '# Validation.SampleLibrary' "$GENERATED_ROOT/README.md"
+
+      - name: Inicializar contexto Git da saída
+        shell: bash
+        run: |
+          git -C "$GENERATED_ROOT" init -b main
+          git -C "$GENERATED_ROOT" config user.name "Template Validation"
+          git -C "$GENERATED_ROOT" config user.email "template-validation@example.invalid"
+          git -C "$GENERATED_ROOT" add --all
+          git -C "$GENERATED_ROOT" commit -m "Initial generated library"
+          git -C "$GENERATED_ROOT" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restaurar ferramentas locais da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Restaurar dependências da saída em locked mode
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore --locked-mode
+
+      - name: Verificar formatação da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Executar testes da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Empacotar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: >-
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Validar pacote e Source Link da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
+
+      - name: Verificar identidade do pacote
+        shell: bash
+        run: |
+          package="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.nupkg"
+          symbols="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.snupkg"
+
+          test -f "$package"
+          test -f "$symbols"
+
+      - name: Verificar ausência de resíduos
+        shell: bash
+        run: |
+          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template'
+          matches="$(grep -R -I -n -E "$forbidden" "$GENERATED_ROOT" \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj \
+            --exclude-dir=artifacts || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Identidade indevida encontrada na saída gerada:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true
