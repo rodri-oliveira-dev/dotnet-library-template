@@ -26,6 +26,8 @@ jobs:
       release-tag: ${{ steps.version.outputs.release_tag }}
       should-publish: ${{ steps.version.outputs.should_publish }}
       safe-to-publish: ${{ steps.package.outputs.safe_to_publish }}
+      nuget-publishing-enabled: ${{ steps.nuget-publishing.outputs.nuget_publishing_enabled }}
+      nuget-publishing-reason: ${{ steps.nuget-publishing.outputs.nuget_publishing_reason }}
 
     steps:
       - name: Checkout
@@ -96,6 +98,15 @@ jobs:
           echo "package_id=$package_id" >> "$GITHUB_OUTPUT"
           echo "safe_to_publish=$safe_to_publish" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve NuGet publishing opt-in
+        id: nuget-publishing
+        shell: bash
+        env:
+          SHOULD_PUBLISH: ${{ steps.version.outputs.should_publish }}
+          SAFE_TO_PUBLISH: ${{ steps.package.outputs.safe_to_publish }}
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: bash scripts/resolve-nuget-publishing.sh
+
       - name: Validate resolved MSBuild version
         shell: bash
         env:
@@ -161,9 +172,7 @@ jobs:
   publish-nuget:
     name: Publish to NuGet.org
     needs: build-and-pack
-    if: >-
-      needs.build-and-pack.outputs.should-publish == 'true' &&
-      needs.build-and-pack.outputs.safe-to-publish == 'true'
+    if: needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -180,16 +189,6 @@ jobs:
         with:
           name: release-packages
           path: artifacts/packages
-
-      - name: Validate NuGet trusted-publishing configuration
-        shell: bash
-        env:
-          NUGET_USER: ${{ vars.NUGET_USER }}
-        run: |
-          if [ -z "$NUGET_USER" ]; then
-            echo '::error::Configure the repository variable NUGET_USER with the nuget.org profile name used by the trusted-publishing policy.'
-            exit 1
-          fi
 
       - name: Exchange GitHub OIDC token for temporary NuGet API key
         id: nuget-login
@@ -217,7 +216,10 @@ jobs:
       needs.build-and-pack.outputs.should-publish == 'true' &&
       (
         needs.build-and-pack.outputs.safe-to-publish == 'false' ||
-        needs.publish-nuget.result == 'success'
+        (
+          needs.build-and-pack.outputs.nuget-publishing-enabled == 'true' &&
+          needs.publish-nuget.result == 'success'
+        )
       )
     runs-on: ubuntu-latest
     permissions:

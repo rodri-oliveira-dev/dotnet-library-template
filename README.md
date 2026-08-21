@@ -55,7 +55,7 @@ Para a maioria dos novos projetos, prefira **`dotnet new`**.
 - versão base centralizada em `Directory.Build.props`;
 - validação da versão do pacote e da metadata do assembly;
 - release por tag Git;
-- NuGet.org Trusted Publishing via GitHub OIDC;
+- NuGet.org Trusted Publishing via GitHub OIDC com publicação opt-in por `NUGET_USER`;
 - GitHub Release após publicação bem-sucedida do pacote real.
 
 ### Segurança e governança
@@ -139,8 +139,7 @@ Antes do primeiro release de uma biblioteca criada pelo GitHub Template:
 - personalize a descrição e os metadados do pacote;
 - revise a versão base em `Directory.Build.props`;
 - revise README, licença e metadados públicos;
-- configure NuGet.org Trusted Publishing para `.github/workflows/release.yml`;
-- configure a repository variable `NUGET_USER`;
+- se quiser publicar no NuGet.org, configure Trusted Publishing para `.github/workflows/release.yml` e a repository variable `NUGET_USER`;
 - configure `SONAR_TOKEN` se quiser habilitar SonarQube Cloud;
 - configure ruleset ou branch protection para `main`;
 - revise as permissões padrão do GitHub Actions;
@@ -171,7 +170,7 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --expected-version 1.0.0
 ```
 
-Os workflows de manutenção também validam geração end-to-end, contrato de versionamento e integração opcional com SonarQube Cloud.
+Os workflows de manutenção também validam geração end-to-end, contrato de versionamento, integração opcional com SonarQube Cloud e a matriz de habilitação da publicação NuGet.
 
 ## Versionamento e release
 
@@ -197,10 +196,14 @@ v1.3.0-beta.1   -> Version 1.3.0-beta.1
 
 ### NuGet.org Trusted Publishing
 
-Para publicar um pacote real:
+A publicação no NuGet.org é explicitamente **opt-in**. Para habilitá-la em um pacote real:
 
 1. crie uma Trusted Publishing policy no nuget.org apontando para `release.yml`;
 2. configure a repository variable `NUGET_USER` com o profile name do nuget.org.
+
+`NUGET_USER` funciona também como flag de habilitação. O workflow centraliza a decisão em `nuget-publishing-enabled`, que só é verdadeiro quando a execução veio de uma tag real, o `PackageId` não é o placeholder e `NUGET_USER` possui um valor não vazio.
+
+Se `NUGET_USER` estiver ausente, vazio ou contiver apenas espaços, build, testes, pack e validação continuam normalmente, mas o job de publicação é ignorado. Nesse cenário, `NuGet/login@v1` não é iniciado, nenhuma credencial OIDC de publicação é solicitada e `dotnet nuget push` não é executado. Para pacotes reais, o GitHub Release com artefatos também é ignorado, preservando a garantia de não criar um release parcial.
 
 O template não usa `NUGET_API_KEY` de longa duração.
 
@@ -208,7 +211,7 @@ O template não usa `NUGET_API_KEY` de longa duração.
 
 O repositório-template usa `Template.Library` como identidade neutra. O workflow de release detecta essa identidade e impede sua publicação acidental no NuGet.org.
 
-O próprio template ainda pode criar GitHub Releases versionadas, mas sem publicar nem anexar o pacote placeholder. Em projetos gerados por `dotnet new`, o `PackageId` é substituído pelo nome real da biblioteca e a publicação passa a ser permitida depois que Trusted Publishing estiver configurado.
+O próprio template ainda pode criar GitHub Releases versionadas, mesmo sem `NUGET_USER`, mas sem publicar nem anexar o pacote placeholder. Em projetos gerados por `dotnet new`, o `PackageId` é substituído pelo nome real da biblioteca e a publicação passa a ser permitida somente depois que Trusted Publishing e `NUGET_USER` estiverem configurados.
 
 ## Segurança e qualidade
 
@@ -224,6 +227,7 @@ Os principais workflows têm responsabilidades separadas:
 | `template-validation.yml` | validação end-to-end do `dotnet new` |
 | `sonar-template-validation.yml` | validação do contrato Sonar na saída gerada |
 | `versioning-validation.yml` | validação do contrato SemVer e metadata do pacote/assembly |
+| `release-publishing-validation.yml` | validação maintenance-only da matriz de opt-in de publicação NuGet |
 
 Separar esses fluxos torna falhas de build, segurança, análise externa, geração e release independentes e diagnosticáveis.
 
@@ -282,6 +286,7 @@ Conteúdo específico de manutenção do template é excluído, incluindo:
 │   ├── repository-administration.md
 │   └── template-development.md
 ├── scripts/
+│   ├── resolve-nuget-publishing.sh
 │   └── verify-package.cs
 ├── src/
 │   └── Template.Library/

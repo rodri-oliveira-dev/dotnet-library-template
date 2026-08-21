@@ -170,24 +170,36 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-validates the SemVer tag, restores dependencies in locked mode, resolves the same version through MSBuild, builds, tests, packs with package version `1.0.0`, validates package and assembly metadata, publishes the package and `.snupkg` symbols to NuGet.org, and then creates the GitHub Release with those artifacts.
+always validates the SemVer tag, restores dependencies in locked mode, resolves the same version through MSBuild, builds, tests, packs, and validates package and assembly metadata.
 
-Manual `workflow_dispatch` runs are **dry-run only**: they require an explicit version such as `v1.0.0` or `v1.1.0-beta.1` but never publish to NuGet.org or create a GitHub Release.
+NuGet.org publication is explicitly **opt-in through the `NUGET_USER` repository variable**. The workflow resolves a single `nuget-publishing-enabled` gate from three conditions:
+
+```text
+real tag release
+AND publishable package identity
+AND NUGET_USER is configured and non-empty
+```
+
+When that gate is true, the workflow exchanges a GitHub OIDC token through `NuGet/login@v1`, publishes the `.nupkg`/`.snupkg` to NuGet.org, and then creates the GitHub Release with those artifacts.
+
+When `NUGET_USER` is absent, empty, or contains only whitespace, the validation/build/test/pack path still completes, but NuGet publication is disabled. In that case the workflow does **not** start `NuGet/login@v1`, does not request a publication credential, and does not execute `dotnet nuget push`. For a real package, the package-backed GitHub Release is also skipped so a partially completed release is not created.
+
+Manual `workflow_dispatch` runs are **dry-run only**: they require an explicit version such as `v1.0.0` or `v1.1.0-beta.1` but never publish to NuGet.org or create a GitHub Release, regardless of `NUGET_USER`.
 
 ### Configure NuGet.org Trusted Publishing
 
 The workflow uses NuGet.org **Trusted Publishing** with GitHub OIDC instead of storing a long-lived `NUGET_API_KEY`.
 
-Before the first real release:
+To enable real NuGet publication:
 
 1. Sign in to nuget.org and create a Trusted Publishing policy for this repository.
 2. Set the policy workflow file to `release.yml`.
 3. Add a GitHub repository variable named `NUGET_USER` containing the nuget.org profile name that owns/publishes the package.
 4. Ensure the package ID and package metadata are correct before creating the release tag.
 
-`NUGET_USER` is a repository variable, not an API key. The workflow requests a short-lived credential through `NuGet/login@v1` only when a real tag release is ready to publish.
+`NUGET_USER` is both the nuget.org profile name used by Trusted Publishing and the explicit publication-enablement flag. A repository can use the full build/test/pack/release-validation baseline without defining it.
 
-If NuGet authentication or publication fails, the GitHub Release job does not run, preventing a partially completed release.
+If NuGet authentication or publication fails after publication has been enabled, the GitHub Release job does not run, preventing a partially completed release.
 
 ## Repository structure
 
@@ -203,6 +215,7 @@ If NuGet authentication or publication fails, the GitHub Release job does not ru
 │       ├── release.yml
 │       └── sonar.yml
 ├── scripts/
+│   ├── resolve-nuget-publishing.sh
 │   └── verify-package.cs
 ├── src/
 │   └── Template.Library/
@@ -222,8 +235,8 @@ If NuGet authentication or publication fails, the GitHub Release job does not ru
 
 Repository-level settings are not stored in Git, so they are not automatically recreated when this project is copied or generated. Review the target repository settings and configure what your project needs, especially:
 
-- the NuGet.org Trusted Publishing policy for `release.yml`;
-- the `NUGET_USER` repository variable;
+- the NuGet.org Trusted Publishing policy for `release.yml` if NuGet publication is desired;
+- the `NUGET_USER` repository variable to opt in to NuGet publication;
 - optional SonarQube Cloud secret `SONAR_TOKEN` and any `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION`, or `SONAR_HOST_URL` overrides;
 - branch protection or rulesets;
 - environments and deployment protection rules, if your project adds them;
