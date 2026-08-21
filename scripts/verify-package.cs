@@ -5,15 +5,32 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Xml.Linq;
 
-if (args.Length is < 1 or > 2 || (args.Length == 2 && args[1] != "--require-source-link"))
+if (args.Length < 1)
 {
-    Console.Error.WriteLine(
-        "Uso: dotnet run --file scripts/verify-package.cs -- <diretorio-de-pacotes> [--require-source-link]");
+    PrintUsage();
     return 1;
 }
 
 var packageDirectory = Path.GetFullPath(args[0]);
-var requireSourceLink = args.Length == 2;
+var requireSourceLink = false;
+string? expectedVersion = null;
+
+for (var index = 1; index < args.Length; index++)
+{
+    switch (args[index])
+    {
+        case "--require-source-link":
+            requireSourceLink = true;
+            break;
+        case "--expected-version" when index + 1 < args.Length:
+            expectedVersion = args[++index];
+            break;
+        default:
+            PrintUsage();
+            return 1;
+    }
+}
+
 var nupkg = Directory.EnumerateFiles(packageDirectory, "*.nupkg")
     .Single(path => !path.EndsWith(".snupkg", StringComparison.OrdinalIgnoreCase));
 var snupkg = Directory.EnumerateFiles(packageDirectory, "*.snupkg").Single();
@@ -30,6 +47,12 @@ var metadata = nuspec.Root.Element(ns + "metadata")
 
 AssertEqual("Template.Library", metadata.Element(ns + "id")?.Value, "PackageId");
 AssertNotBlank(metadata.Element(ns + "description")?.Value, "Description");
+
+if (!string.IsNullOrWhiteSpace(expectedVersion))
+{
+    AssertEqual(expectedVersion, metadata.Element(ns + "version")?.Value, "Version");
+}
+
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.dll");
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.xml");
 
@@ -96,6 +119,11 @@ if (!string.IsNullOrWhiteSpace(sourceLinkJson)
 Console.WriteLine($"Pacote validado: {Path.GetFileName(nupkg)}");
 Console.WriteLine($"Símbolos validados: {Path.GetFileName(snupkg)}");
 
+if (!string.IsNullOrWhiteSpace(expectedVersion))
+{
+    Console.WriteLine($"Versão validada: {expectedVersion}");
+}
+
 if (!string.IsNullOrWhiteSpace(repositoryUrl))
 {
     Console.WriteLine($"RepositoryUrl: {repositoryUrl}");
@@ -115,6 +143,13 @@ else
 }
 
 return 0;
+
+static void PrintUsage()
+{
+    Console.Error.WriteLine(
+        "Uso: dotnet run --file scripts/verify-package.cs -- <diretorio-de-pacotes> "
+        + "[--require-source-link] [--expected-version <versao>]");
+}
 
 static void AssertEntryExists(ZipArchive archive, string path)
 {
