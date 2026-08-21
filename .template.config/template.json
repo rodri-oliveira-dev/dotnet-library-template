@@ -30,6 +30,7 @@
         "**/*.user",
         "README.md",
         "docs/template-development.md",
+        "docs/repository-administration.md",
         ".github/workflows/template-validation.yml",
         ".github/workflows/issue-*-pre-pr-validation.yml"
       ],
