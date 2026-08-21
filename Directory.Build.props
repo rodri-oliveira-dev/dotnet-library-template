@@ -3,6 +3,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>10-recommended</AnalysisLevel>
+    <AnalysisLevelSecurity>10-all</AnalysisLevelSecurity>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <!-- Single source of truth for local/development builds. Release tags override Version in release.yml. -->
     <VersionPrefix>1.0.0</VersionPrefix>

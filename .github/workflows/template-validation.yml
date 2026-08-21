@@ -22,10 +22,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Configurar .NET 10
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -166,8 +168,8 @@ jobs:
           grep -Fq 'schedule:' "$file"
           grep -Fq 'contents: read' "$file"
           grep -Fq 'security-events: write' "$file"
-          grep -Fq 'github/codeql-action/init@v4' "$file"
-          grep -Fq 'github/codeql-action/analyze@v4' "$file"
+          grep -Fq 'github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$file"
+          grep -Fq 'github/codeql-action/analyze@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$file"
           grep -Fq 'languages: csharp' "$file"
           grep -Fq 'build-mode: manual' "$file"
           grep -Fq 'dotnet restore Template.Library.slnx --locked-mode' "$file"
@@ -184,15 +186,15 @@ jobs:
           release='.github/workflows/release.yml'
 
           test -s "$dependency_review"
-          grep -Fq 'actions/dependency-review-action@v5' "$dependency_review"
+          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$dependency_review"
           grep -Fq 'fail-on-severity: high' "$dependency_review"
           grep -Fq 'contents: read' "$dependency_review"
 
           test -s "$release"
           grep -Fq 'workflow_dispatch:' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
-          grep -Fq 'actions/upload-artifact@v7' "$release"
-          grep -Fq 'actions/download-artifact@v8' "$release"
+          grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$release"
+          grep -Fq 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8' "$release"
           grep -Fq 'id-token: write' "$release"
           grep -Fq 'contents: write' "$release"
           grep -Fq 'safe-to-publish' "$release"
@@ -202,6 +204,30 @@ jobs:
 
           if grep -Eq 'secrets\.NUGET_API_KEY|write-all|1341282709|rodri-oliveira-dev/dotnet-library-template' "$release"; then
             echo "Workflow de release contém credencial persistente, permissão ou metadado específico do repositório-base."
+            exit 1
+          fi
+
+          unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' .github/workflows \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "Actions sem pin por SHA completo:"
+            echo "$unpinned"
+            exit 1
+          fi
+
+          missing_version_comment="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' .github/workflows \
+            | grep -Ev '# v[0-9]' || true)"
+          if [ -n "$missing_version_comment" ]; then
+            echo "Actions pinadas sem comentario de versao:"
+            echo "$missing_version_comment"
+            exit 1
+          fi
+
+          checkout_count="$(grep -R -E '^[[:space:]]*uses: actions/checkout@' .github/workflows | wc -l | tr -d ' ')"
+          readonly_checkout_count="$(grep -R -E '^[[:space:]]*persist-credentials: false$' .github/workflows | wc -l | tr -d ' ')"
+
+          if [ "$checkout_count" -ne 10 ] || [ "$readonly_checkout_count" -ne 9 ]; then
+            echo "Esperados 10 checkouts e 9 checkouts read-only com persist-credentials:false; obtidos $checkout_count e $readonly_checkout_count."
             exit 1
           fi
 
@@ -239,8 +265,11 @@ jobs:
             "README.md"
             "CONTRIBUTING.md"
             "CODE_OF_CONDUCT.md"
+            "SECURITY.md"
             "CHANGELOG.md"
             "AGENTS.md"
+            ".editorconfig"
+            "global.json"
             ".agents/skills/dotnet-library-change/SKILL.md"
             ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
             ".agents/skills/coverage-analysis/SKILL.md"
@@ -290,15 +319,23 @@ jobs:
           grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
           grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
           grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
-          grep -Fq 'actions/upload-artifact@v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq '"version": "10.0.303"' "$GENERATED_ROOT/global.json"
+          grep -Fq '"rollForward": "latestFeature"' "$GENERATED_ROOT/global.json"
+          grep -Fq '"runner": "Microsoft.Testing.Platform"' "$GENERATED_ROOT/global.json"
+          grep -Fq 'csharp_preferred_modifier_order = file,public,protected,internal,private,static,abstract,virtual,override,sealed,readonly,required,extern,new,unsafe,volatile,async:suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1062.severity = warning' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1859.severity = suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'privately report suspected vulnerabilities' "$GENERATED_ROOT/SECURITY.md"
+          grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
-          grep -Fq 'github/codeql-action/init@v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
-          grep -Fq 'github/codeql-action/analyze@v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'github/codeql-action/analyze@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'build-mode: manual' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
-          grep -Fq 'actions/dependency-review-action@v5' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
@@ -308,6 +345,22 @@ jobs:
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
+
+          generated_unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' "$GENERATED_ROOT/.github/workflows" \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$generated_unpinned" ]; then
+            echo "Actions sem pin por SHA completo na saida gerada:"
+            echo "$generated_unpinned"
+            exit 1
+          fi
+
+          generated_checkout_count="$(grep -R -E '^[[:space:]]*uses: actions/checkout@' "$GENERATED_ROOT/.github/workflows" | wc -l | tr -d ' ')"
+          generated_readonly_checkout_count="$(grep -R -E '^[[:space:]]*persist-credentials: false$' "$GENERATED_ROOT/.github/workflows" | wc -l | tr -d ' ')"
+
+          if [ "$generated_checkout_count" -ne 6 ] || [ "$generated_readonly_checkout_count" -ne 5 ]; then
+            echo "Saida gerada deveria ter 6 checkouts e 5 checkouts read-only; obteve $generated_checkout_count e $generated_readonly_checkout_count."
+            exit 1
+          fi
 
       - name: Inicializar contexto Git da saída
         shell: bash
@@ -326,6 +379,25 @@ jobs:
       - name: Restaurar dependências da saída em locked mode
         working-directory: ${{ env.GENERATED_ROOT }}
         run: dotnet restore --locked-mode
+
+      - name: Verificar politicas MSBuild da saida
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          project="src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+
+          get_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          test "$(get_property AnalysisLevel)" = "10-recommended"
+          test "$(get_property AnalysisLevelSecurity)" = "10-all"
+          test "$(get_property EnforceCodeStyleInBuild)" = "true"
+          test "$(get_property EnablePackageValidation)" = "true"
+          test "$(get_property PackageReadmeFile)" = "README.md"
 
       - name: Verificar formatação da saída
         working-directory: ${{ env.GENERATED_ROOT }}

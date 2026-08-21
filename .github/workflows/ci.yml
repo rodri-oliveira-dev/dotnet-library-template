@@ -22,10 +22,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Configurar .NET 10
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -75,16 +77,69 @@ jobs:
           assert_equals Nullable enable
           assert_equals ImplicitUsings enable
           assert_equals TreatWarningsAsErrors true
+          assert_equals AnalysisLevel 10-recommended
+          assert_equals AnalysisLevelSecurity 10-all
+          assert_equals EnforceCodeStyleInBuild true
           assert_equals NuGetAudit true
           assert_equals NuGetAuditMode all
           assert_equals RestoreEnablePackagePruning true
           assert_equals RestorePackagesWithLockFile true
           assert_equals Deterministic true
           assert_equals ContinuousIntegrationBuild true
+          assert_equals EnablePackageValidation true
+          assert_equals PackageReadmeFile README.md
           assert_contains WarningsNotAsErrors NU1901
           assert_contains WarningsNotAsErrors NU1902
           assert_contains WarningsAsErrors NU1903
           assert_contains WarningsAsErrors NU1904
+
+      - name: Verificar SDK reproduzivel
+        shell: bash
+        run: |
+          test -s global.json
+          grep -Fq '"version": "10.0.303"' global.json
+          grep -Fq '"rollForward": "latestFeature"' global.json
+          grep -Fq '"allowPrerelease": false' global.json
+          grep -Fq '"runner": "Microsoft.Testing.Platform"' global.json
+
+          sdk_version="$(dotnet --version)"
+          if [[ ! "$sdk_version" =~ ^10\.0\.[0-9]+$ ]]; then
+            echo "SDK .NET 10 esperado pelo global.json, obtido '$sdk_version'."
+            exit 1
+          fi
+
+      - name: Verificar hardening de GitHub Actions
+        shell: bash
+        run: |
+          unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' .github/workflows \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "Actions sem pin por SHA completo:"
+            echo "$unpinned"
+            exit 1
+          fi
+
+          missing_version_comment="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' .github/workflows \
+            | grep -Ev '# v[0-9]' || true)"
+          if [ -n "$missing_version_comment" ]; then
+            echo "Actions pinadas sem comentario de versao:"
+            echo "$missing_version_comment"
+            exit 1
+          fi
+
+          checkout_count="$(grep -R -E '^[[:space:]]*uses: actions/checkout@' .github/workflows | wc -l | tr -d ' ')"
+          readonly_checkout_count="$(grep -R -E '^[[:space:]]*persist-credentials: false$' .github/workflows | wc -l | tr -d ' ')"
+
+          if [ "$checkout_count" -ne 10 ] || [ "$readonly_checkout_count" -ne 9 ]; then
+            echo "Esperados 10 checkouts e 9 checkouts read-only com persist-credentials:false; obtidos $checkout_count e $readonly_checkout_count."
+            exit 1
+          fi
+
+          ensure_tag_block="$(awk '/Checkout validated commit/{capture=1} capture{print} /Create or verify release tag/{exit}' .github/workflows/release.yml)"
+          if grep -Fq 'persist-credentials: false' <<< "$ensure_tag_block"; then
+            echo "Checkout do job ensure-release-tag precisa preservar credenciais para publicar a tag."
+            exit 1
+          fi
 
       - name: Verificar Central Package Management
         shell: bash
@@ -193,7 +248,7 @@ jobs:
           fi
 
       - name: Publicar cobertura
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage
           path: artifacts/coverage/coverage.cobertura.xml
@@ -201,7 +256,7 @@ jobs:
           retention-days: 7
 
       - name: Publicar pacotes NuGet
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: nuget-packages
           path: |

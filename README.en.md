@@ -31,7 +31,9 @@ For most new projects, prefer **`dotnet new`**.
 - `.slnx` solution format;
 - nullable reference types and implicit usings;
 - warnings treated as errors;
+- SDK analyzer baseline at `10-recommended`, security analyzers at `10-all`, and code style participating in builds;
 - deterministic builds;
+- reproducible SDK selection through `global.json` with sustainable roll-forward inside .NET 10;
 - Central Package Management through `Directory.Packages.props`;
 - `packages.lock.json` and `--locked-mode` restore;
 - NuGet Audit failing on High/Critical vulnerabilities.
@@ -43,6 +45,7 @@ For most new projects, prefer **`dotnet new`**.
 - NSubstitute;
 - coverage with Coverlet MTP;
 - `dotnet format` in CI;
+- low-noise reliability and performance rules applied to production code without blocking tests on internal implementation details;
 - optional SonarQube Cloud analysis;
 - package validation through a temporary consumer project.
 
@@ -50,7 +53,9 @@ For most new projects, prefer **`dotnet new`**.
 
 - `.nupkg` and `.snupkg`;
 - XML documentation;
+- README included in the NuGet package;
 - portable PDB and Source Link;
+- native SDK Package Validation during `dotnet pack`;
 - Semantic Versioning;
 - base version centralized in `Directory.Build.props`;
 - validation of package and assembly version metadata;
@@ -67,10 +72,11 @@ For most new projects, prefer **`dotnet new`**.
 - MIT license;
 - `CONTRIBUTING.md`;
 - `CODE_OF_CONDUCT.md`;
+- `SECURITY.md`;
 - `CHANGELOG.md`;
-- workflows with explicit least-privilege permissions.
+- workflows with explicit least-privilege permissions, actions pinned by SHA, and read-only checkouts without credential persistence.
 
-The template is intentionally generic. It does not include ASP.NET Core, databases, ORMs, logging implementations, infrastructure-specific Testcontainers, BenchmarkDotNet, or other dependencies without a proven reusable need.
+The template is intentionally generic. It does not include ASP.NET Core, databases, ORMs, logging implementations, infrastructure-specific Testcontainers, BenchmarkDotNet, runtime tuning, Server GC, ReadyToRun, or other dependencies without a proven reusable need. Trimming or Native AOT compatibility should be enabled by each library only when it is part of the package's real contract.
 
 ## Requirements
 
@@ -156,6 +162,7 @@ The recommended administrative baseline is documented in [docs/repository-admini
 From the repository root:
 
 ```bash
+dotnet --version
 dotnet tool restore
 dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
@@ -347,6 +354,7 @@ Template-maintenance-only content is excluded, including:
 ├── LICENSE
 ├── README.md
 ├── README.en.md
+├── SECURITY.md
 ├── Template.Library.slnx
 └── global.json
 ```
@@ -358,6 +366,7 @@ Template-maintenance-only content is excluded, including:
 - [Repository administration](docs/repository-administration.md): desired baseline for GitHub administrative settings;
 - [Generated library README](docs/library-readme.md): README used by projects created through `dotnet new`;
 - [CONTRIBUTING.md](CONTRIBUTING.md): contribution process and breaking-change expectations;
+- [SECURITY.md](SECURITY.md): vulnerability reporting and triage policy;
 - [CHANGELOG.md](CHANGELOG.md): notable change history;
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): participation standards.
 

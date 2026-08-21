@@ -18,9 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Optional SonarQube Cloud analysis using a locally pinned SonarScanner for .NET, repository-secret opt-in, configurable repository coordinates, and Coverlet/OpenCover coverage import.
 - Centralized SemVer versioning with base version `1.0.0`, tag-driven release overrides, packaged assembly metadata validation, and E2E stable/prerelease/mismatch checks.
 - Maintenance-only release-publishing validation covering manual release request validation, tag/SHA guarantees, the `NUGET_USER` opt-in decision matrix, and generated-template behavior.
+- Reproducible .NET SDK selection through `global.json`, SDK analyzer baseline validation, native SDK Package Validation, packaged README metadata, and a generated `SECURITY.md` policy.
 
 ### Changed
 
 - Hardened GitHub Actions permissions to job scope where applicable and pinned `NuGet/login` to the immutable v1.2.0 commit SHA used by the release workflow.
+- Hardened all eligible GitHub Actions references with immutable commit SHAs and disabled credential persistence on read-only checkouts.
+- Extended `.editorconfig` with production-scoped reliability/API-usage rules and low-noise performance rules while keeping `CA1859` as a suggestion.
 - NuGet.org publication is explicitly opt-in through the `NUGET_USER` repository variable; when it is absent, empty, or whitespace-only, the release still creates its tag and GitHub Release without starting OIDC authentication or `dotnet nuget push`.
 - GitHub Release creation is now independent from NuGet enablement; when NuGet publication is enabled, the GitHub Release still waits for a successful NuGet publication before it is created.

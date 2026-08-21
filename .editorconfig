@@ -60,7 +60,7 @@ csharp_prefer_simple_default_expression = true:suggestion
 csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
 csharp_style_prefer_index_operator = true:suggestion
 csharp_style_prefer_range_operator = true:suggestion
-csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async:suggestion
+csharp_preferred_modifier_order = file,public,protected,internal,private,static,abstract,virtual,override,sealed,readonly,required,extern,new,unsafe,volatile,async:suggestion
 
 # Formatação C#.
 csharp_new_line_before_open_brace = all
@@ -93,13 +93,21 @@ dotnet_naming_rule.types_must_be_pascal_case.style = pascal_case_style
 dotnet_naming_symbols.types.applicable_kinds = class,struct,interface,enum,delegate
 dotnet_naming_symbols.types.applicable_accessibilities = *
 
-# Membros expostos usam PascalCase.
-dotnet_naming_rule.public_members_must_be_pascal_case.severity = warning
-dotnet_naming_rule.public_members_must_be_pascal_case.symbols = public_members
-dotnet_naming_rule.public_members_must_be_pascal_case.style = pascal_case_style
+# Contratos publicos e extensíveis usam PascalCase.
+dotnet_naming_rule.public_contract_members_must_be_pascal_case.severity = warning
+dotnet_naming_rule.public_contract_members_must_be_pascal_case.symbols = public_contract_members
+dotnet_naming_rule.public_contract_members_must_be_pascal_case.style = pascal_case_style
 
-dotnet_naming_symbols.public_members.applicable_kinds = property,method,event
-dotnet_naming_symbols.public_members.applicable_accessibilities = public,internal,protected,protected_internal,private_protected
+dotnet_naming_symbols.public_contract_members.applicable_kinds = property,method,event
+dotnet_naming_symbols.public_contract_members.applicable_accessibilities = public,protected,protected_internal
+
+# Membros de implementacao interna tambem usam PascalCase, mas nao sao descritos como API publica.
+dotnet_naming_rule.implementation_members_must_be_pascal_case.severity = warning
+dotnet_naming_rule.implementation_members_must_be_pascal_case.symbols = implementation_members
+dotnet_naming_rule.implementation_members_must_be_pascal_case.style = pascal_case_style
+
+dotnet_naming_symbols.implementation_members.applicable_kinds = property,method,event
+dotnet_naming_symbols.implementation_members.applicable_accessibilities = internal,private_protected
 
 # Constantes usam PascalCase.
 dotnet_naming_rule.constants_must_be_pascal_case.severity = warning
@@ -115,3 +123,21 @@ dotnet_naming_style.pascal_case_style.capitalization = pascal_case
 # Arquivos gerados não devem influenciar convenções de estilo do código mantido manualmente.
 [*.{designer.cs,Designer.cs,g.cs,g.i.cs,generated.cs,Generated.cs}]
 generated_code = true
+
+[src/**/*.cs]
+# Regras de confiabilidade para APIs e ownership de libraries.
+dotnet_diagnostic.CA1062.severity = warning
+dotnet_code_quality.CA1062.api_surface = public, protected
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2007.severity = warning
+dotnet_diagnostic.CA2012.severity = warning
+dotnet_diagnostic.CA2014.severity = warning
+dotnet_diagnostic.CA2016.severity = warning
+dotnet_diagnostic.CA2022.severity = warning
+
+# Performance de baixo ruido para codigo de producao. CA1859 permanece sugestao para nao estreitar APIs publicas por micro-otimizacao.
+dotnet_diagnostic.CA1851.severity = warning
+dotnet_diagnostic.CA1860.severity = warning
+dotnet_diagnostic.CA1861.severity = warning
+dotnet_diagnostic.CA1862.severity = warning
+dotnet_diagnostic.CA1859.severity = suggestion

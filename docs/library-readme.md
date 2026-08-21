@@ -13,6 +13,8 @@ Check the installed SDK with:
 dotnet --version
 ```
 
+The repository pins the expected .NET 10 SDK feature band in `global.json` while allowing roll-forward to newer .NET 10 feature bands.
+
 ## Restore
 
 Restore local .NET tools and locked package dependencies from the repository root:
@@ -30,7 +32,9 @@ The local tool manifest includes SonarScanner for .NET. Installing/restoring the
 dotnet build --configuration Release --no-restore
 ```
 
-The shared build policies enable nullable reference types, implicit usings, deterministic builds, NuGet auditing, package lock files, and warnings as errors.
+The shared build policies enable nullable reference types, implicit usings, deterministic builds, NuGet auditing, package lock files, warnings as errors, SDK analyzers at `10-recommended`, security analyzers at `10-all`, and code style enforcement during builds.
+
+Production code under `src/**/*.cs` also enables selected reliability/API-usage rules and low-noise performance rules. Test code keeps the shared style baseline without inheriting production-only rules that would make tests noisy.
 
 ## Test
 
@@ -55,7 +59,7 @@ dotnet pack src/Template.Library/Template.Library.csproj \
   --output artifacts/packages
 ```
 
-The project generates a `.nupkg` plus a `.snupkg` containing portable PDB symbols. XML documentation and Source Link metadata are included in the packaging baseline.
+The project generates a `.nupkg` plus a `.snupkg` containing portable PDB symbols. XML documentation, the project README, Source Link metadata, and native SDK Package Validation are included in the packaging baseline.
 
 Before publishing a real package, replace the placeholder package description in `src/Template.Library/Template.Library.csproj` with a description of the library.
 
@@ -113,13 +117,15 @@ Before cutting a stable release, move relevant entries from the `Unreleased` sec
 - `coverage` with `coverage.cobertura.xml`;
 - `nuget-packages` with `.nupkg` and `.snupkg` files.
 
-The workflow uses read-only repository permissions and cancels superseded runs for the same Git ref.
+The workflow uses read-only repository permissions, pins third-party actions by SHA with version comments, avoids persisting checkout credentials for read-only jobs, and cancels superseded runs for the same Git ref.
 
 ## Security analysis
 
 `.github/workflows/codeql.yml` runs GitHub CodeQL for C# on pull requests to `main`, pushes to `main`, and a weekly schedule. It uses CodeQL Action v4 with a manual build so the analysis follows the same reproducible .NET 10 restore/build contract as the repository baseline.
 
 `.github/workflows/dependency-review.yml` reviews dependency changes in pull requests and blocks newly introduced High/Critical known vulnerabilities.
+
+Use `SECURITY.md` to report suspected vulnerabilities privately. Do not open sensitive vulnerability details in public issues.
 
 ## Optional SonarQube Cloud analysis
 
@@ -269,6 +275,8 @@ If NuGet authentication or publication fails after publication has been enabled,
 ├── Directory.Build.props
 ├── Directory.Packages.props
 ├── LICENSE
+├── README.md
+├── SECURITY.md
 ├── Template.Library.slnx
 └── global.json
 ```
@@ -286,6 +294,8 @@ Repository-level settings are not stored in Git, so they are not automatically r
 - security features such as Dependabot alerts, code scanning, secret scanning, and push protection when available.
 
 Never commit secret values to the repository.
+
+Trimming and Native AOT compatibility are intentionally not promised by default. Enable those analyzers and package properties only when this library's public contract and implementation have been validated for those scenarios.
 
 ## Contributing
 
