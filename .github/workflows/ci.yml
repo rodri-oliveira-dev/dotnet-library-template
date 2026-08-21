@@ -127,17 +127,41 @@ jobs:
             exit 1
           fi
 
-          checkout_count="$(grep -R -E '^[[:space:]]*uses: actions/checkout@' .github/workflows | wc -l | tr -d ' ')"
-          readonly_checkout_count="$(grep -R -E '^[[:space:]]*persist-credentials: false$' .github/workflows | wc -l | tr -d ' ')"
+          missing_readonly_checkout="$(
+            for workflow in .github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
 
-          if [ "$checkout_count" -ne 10 ] || [ "$readonly_checkout_count" -ne 9 ]; then
-            echo "Esperados 10 checkouts e 9 checkouts read-only com persist-credentials:false; obtidos $checkout_count e $readonly_checkout_count."
-            exit 1
-          fi
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
 
-          ensure_tag_block="$(awk '/Checkout validated commit/{capture=1} capture{print} /Create or verify release tag/{exit}' .github/workflows/release.yml)"
-          if grep -Fq 'persist-credentials: false' <<< "$ensure_tag_block"; then
-            echo "Checkout do job ensure-release-tag precisa preservar credenciais para publicar a tag."
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$missing_readonly_checkout" ]; then
+            echo "Checkouts read-only devem declarar persist-credentials:false:"
+            echo "$missing_readonly_checkout"
             exit 1
           fi
 
