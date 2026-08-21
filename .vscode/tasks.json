@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": ".NET: Restore Tools",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["tool", "restore"],
+      "problemMatcher": []
+    },
+    {
+      "label": ".NET: Restore Dependencies",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["restore", "--locked-mode"],
+      "problemMatcher": []
+    },
+    {
+      "label": ".NET: Build Release",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "--configuration", "Release", "--no-restore"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": ".NET: Test Release",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "--configuration", "Release", "--no-build"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": ".NET: Coverage",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "--configuration",
+        "Release",
+        "--no-build",
+        "--coverlet",
+        "--coverlet-output-format",
+        "cobertura"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": ".NET: Pack Release",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "pack",
+        "--configuration",
+        "Release",
+        "--no-build",
+        "--output",
+        "artifacts/packages"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
