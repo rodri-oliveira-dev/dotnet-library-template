@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Tooling, restore, build, testes e packaging
+    name: Tooling, restore, build, testes, packaging e governança
     runs-on: ubuntu-latest
 
     steps:
@@ -151,6 +151,35 @@ jobs:
           EOF
 
           dotnet build "$consumer_project" --configuration Release --no-restore
+
+      - name: Verificar baseline de governança
+        shell: bash
+        run: |
+          governance_files=(LICENSE CONTRIBUTING.md CODE_OF_CONDUCT.md CHANGELOG.md)
+
+          for file in "${governance_files[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "Arquivo de governança ausente ou vazio: $file"
+              exit 1
+            fi
+          done
+
+          grep -Fq 'MIT License' LICENSE
+          grep -Fq 'Copyright (c) 2026 The project contributors' LICENSE
+          grep -Eq '^## \[Unreleased\]$' CHANGELOG.md
+          grep -Fq 'https://keepachangelog.com/en/1.1.0/' CHANGELOG.md
+          grep -Fq 'https://www.contributor-covenant.org/version/2/1/code_of_conduct/' CODE_OF_CONDUCT.md
+
+          if grep -Fq '[INSERT CONTACT METHOD]' CODE_OF_CONDUCT.md; then
+            echo "CODE_OF_CONDUCT.md mantém placeholder de contato não configurado."
+            exit 1
+          fi
+
+          forbidden='dotnet-library-template|Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers'
+          if grep -E -i -n "$forbidden" "${governance_files[@]}"; then
+            echo "Documento de governança contém identidade ou referência indevida."
+            exit 1
+          fi
 
       - name: Verificar line endings
         shell: bash
