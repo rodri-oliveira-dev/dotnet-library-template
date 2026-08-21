@@ -31,7 +31,7 @@ Keep the parameter surface intentionally small. Add a new parameter only when th
 
 ## Generated content versus maintenance-only content
 
-Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, the normal validation workflow, and package verification tooling.
+Most versioned files belong in generated libraries: source, tests, shared build policies, Central Package Management, package lock files, governance files, the main CI workflow, and package verification tooling.
 
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
@@ -66,6 +66,7 @@ dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
 dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build
+dotnet test --configuration Release --no-build --coverlet --coverlet-output-format cobertura
 dotnet pack src/Template.Library/Template.Library.csproj \
   --configuration Release \
   --no-build \
@@ -73,7 +74,7 @@ dotnet pack src/Template.Library/Template.Library.csproj \
 dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
 ```
 
-The normal CI workflow performs the equivalent baseline checks automatically. The strict Source Link option is appropriate here because the source template is expected to be built from a real Git checkout with repository metadata.
+`.github/workflows/ci.yml` performs the equivalent baseline checks automatically. It also publishes a Cobertura report as the `coverage` artifact and the generated `.nupkg`/`.snupkg` files as the `nuget-packages` artifact. The strict Source Link option is appropriate here because the source template is expected to be built from a real Git checkout with repository metadata.
 
 ## Install the template locally
 
@@ -138,7 +139,7 @@ A valid generated project must not contain unintended matches.
 
 `.github/workflows/template-validation.yml` automates the development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
 
-The workflow is intentionally separate from `.github/workflows/validation.yml` so failures in the source baseline and failures in template generation are distinguishable in GitHub Actions.
+The workflow is intentionally separate from `.github/workflows/ci.yml` so failures in the source baseline and failures in template generation are distinguishable in GitHub Actions.
 
 ## Reinstall after template changes
 

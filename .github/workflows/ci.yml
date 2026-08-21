@@ -1,4 +1,4 @@
-name: Validação
+name: CI
 
 on:
   pull_request:
@@ -11,9 +11,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
-    name: Tooling, restore, build, testes, packaging e governança
+  build-test-pack:
+    name: Restore, build, test, coverage e pack
     runs-on: ubuntu-latest
 
     steps:
@@ -115,8 +119,21 @@ jobs:
       - name: Executar testes com MTP
         run: dotnet test Template.Library.slnx --configuration Release --no-build
 
-      - name: Validar cobertura com Coverlet MTP
+      - name: Coletar cobertura com Coverlet MTP
         run: dotnet test Template.Library.slnx --configuration Release --no-build --coverlet --coverlet-output-format cobertura
+
+      - name: Preparar artefato de cobertura
+        shell: bash
+        run: |
+          coverage_file="$(find . -type f -name 'coverage.cobertura*.xml' -not -path './artifacts/*' -print -quit)"
+
+          if [ -z "$coverage_file" ]; then
+            echo "Relatório Cobertura não foi produzido."
+            exit 1
+          fi
+
+          mkdir -p artifacts/coverage
+          cp "$coverage_file" artifacts/coverage/coverage.cobertura.xml
 
       - name: Empacotar biblioteca
         run: dotnet pack src/Template.Library/Template.Library.csproj --configuration Release --no-build --output artifacts/packages
@@ -175,6 +192,24 @@ jobs:
             exit 1
           fi
 
+      - name: Publicar cobertura
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: artifacts/coverage/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publicar pacotes NuGet
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Verificar line endings
         shell: bash
         run: |
@@ -190,7 +225,7 @@ jobs:
         run: |
           status="$(git status --porcelain --untracked-files=all)"
           if [ -n "$status" ]; then
-            echo "Restore, build, testes ou packaging deixaram artefatos não ignorados:"
+            echo "Restore, build, testes, cobertura ou packaging deixaram artefatos não ignorados:"
             echo "$status"
             exit 1
           fi
