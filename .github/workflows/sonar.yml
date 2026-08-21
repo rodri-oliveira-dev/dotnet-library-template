@@ -101,3 +101,21 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         shell: bash
         run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Auditar issues Security abertas no main (temporário)
+        if: ${{ env.SONAR_TOKEN != '' }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error \
+            --user "$SONAR_TOKEN:" \
+            --get "$SONAR_HOST_URL/api/issues/search" \
+            --data-urlencode "componentKeys=$SONAR_PROJECT_KEY" \
+            --data-urlencode 'branch=main' \
+            --data-urlencode 'issueStatuses=OPEN,CONFIRMED' \
+            --data-urlencode 'impactSoftwareQualities=SECURITY' \
+            --data-urlencode 'ps=500' \
+            > sonar-issues.raw.json
+
+          echo '--- Sonar Security findings ---'
+          jq -r '.issues[] | [.key, .rule, .component, (.line // 0), .severity, .status, .message] | @tsv' sonar-issues.raw.json
+          echo "Total: $(jq -r '.total' sonar-issues.raw.json)"
