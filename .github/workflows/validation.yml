@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Tooling, restore bloqueado, CPM, formatação, build e testes
+    name: Tooling, restore, build, testes e packaging
     runs-on: ubuntu-latest
 
     steps:
@@ -118,6 +118,40 @@ jobs:
       - name: Validar cobertura com Coverlet MTP
         run: dotnet test Template.Library.slnx --configuration Release --no-build --coverlet --coverlet-output-format cobertura
 
+      - name: Empacotar biblioteca
+        run: dotnet pack src/Template.Library/Template.Library.csproj --configuration Release --no-build --output artifacts/packages
+
+      - name: Validar pacote, símbolos e Source Link
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages
+
+      - name: Validar consumo do pacote local
+        shell: bash
+        run: |
+          project="src/Template.Library/Template.Library.csproj"
+          version="$(dotnet msbuild "$project" -nologo -getProperty:PackageVersion | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)"
+          consumer="$(mktemp -d)"
+
+          dotnet new console --framework net10.0 --output "$consumer"
+          consumer_project="$(find "$consumer" -maxdepth 1 -name '*.csproj' -print -quit)"
+
+          if [ -z "$consumer_project" ]; then
+            echo "Projeto consumidor temporário não foi criado."
+            exit 1
+          fi
+
+          dotnet add "$consumer_project" package Template.Library \
+            --version "$version" \
+            --source "$GITHUB_WORKSPACE/artifacts/packages"
+
+          cat > "$consumer/Program.cs" <<'EOF'
+          using Template.Library;
+
+          _ = new Class1();
+          Console.WriteLine("Template.Library package consumed successfully.");
+          EOF
+
+          dotnet build "$consumer_project" --configuration Release --no-restore
+
       - name: Verificar line endings
         shell: bash
         run: |
@@ -133,7 +167,7 @@ jobs:
         run: |
           status="$(git status --porcelain --untracked-files=all)"
           if [ -n "$status" ]; then
-            echo "Restore, build ou testes deixaram artefatos não ignorados:"
+            echo "Restore, build, testes ou packaging deixaram artefatos não ignorados:"
             echo "$status"
             exit 1
           fi
