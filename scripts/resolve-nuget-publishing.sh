@@ -22,8 +22,8 @@ nuget_publishing_enabled=false
 nuget_publishing_reason='disabled'
 
 if [[ "$should_publish" != "true" ]]; then
-  nuget_publishing_reason='dry-run'
-  echo 'NuGet publication disabled: workflow_dispatch is dry-run only.'
+  nuget_publishing_reason='release-disabled'
+  echo 'NuGet publication disabled: release publication gate is disabled.'
 elif [[ "$safe_to_publish" != "true" ]]; then
   nuget_publishing_reason='placeholder-package'
   echo 'NuGet publication disabled: source-template placeholder package detected.'
@@ -33,7 +33,7 @@ elif [[ -z "$trimmed_user" ]]; then
 else
   nuget_publishing_enabled=true
   nuget_publishing_reason='enabled'
-  echo 'NuGet publication enabled: tag release, publishable package, and NUGET_USER are configured.'
+  echo 'NuGet publication enabled: release is publishable and NUGET_USER is configured.'
 fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
