@@ -33,6 +33,7 @@
         "docs/repository-administration.md",
         ".github/workflows/template-validation.yml",
         ".github/workflows/sonar-template-validation.yml",
+        ".github/workflows/versioning-validation.yml",
         ".github/workflows/issue-*-pre-pr-validation.yml"
       ],
       "rename": {

@@ -6,7 +6,7 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rodri-oliveira-dev_dotnet-library-template&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rodri-oliveira-dev_dotnet-library-template)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança, qualidade, release e governança.
+Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança, qualidade, versionamento, release e governança.
 
 O repositório pode ser usado de duas formas:
 
@@ -20,6 +20,7 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - biblioteca e testes em .NET 10;
 - solução no formato `.slnx`;
 - nullable reference types, implicit usings, warnings como errors e build determinístico;
+- versionamento SemVer centralizado com versão base `1.0.0`;
 - Central Package Management em `Directory.Packages.props`;
 - restore reproduzível com `packages.lock.json` e `--locked-mode`;
 - NuGet Audit com falha para vulnerabilidades high/critical;
@@ -28,6 +29,7 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - cobertura via Coverlet MTP;
 - manifesto local de ferramentas .NET, incluindo SonarScanner for .NET;
 - `.nupkg`, `.snupkg`, documentação XML e Source Link;
+- validação de versão do pacote e metadata de assembly;
 - validação do pacote em um consumidor temporário;
 - licença MIT, contribuição, Code of Conduct e changelog;
 - GitHub Actions para CI, CodeQL, Dependency Review, SonarQube Cloud opcional, release e validação end-to-end do custom template;
@@ -61,6 +63,7 @@ Antes de publicar ou liberar a biblioteca:
 
 - substitua a identidade `Template.Library` pelo nome real do projeto, caso tenha usado a cópia direta;
 - personalize a descrição do pacote no `.csproj`;
+- revise a versão base `1.0.0` em `Directory.Build.props` e o fluxo SemVer;
 - revise o README, licença e metadados públicos;
 - configure uma política de NuGet.org Trusted Publishing para `.github/workflows/release.yml`;
 - configure a repository variable `NUGET_USER` com o profile name do nuget.org;
@@ -105,6 +108,8 @@ dotnet pack src/MyCompany.MyLibrary/MyCompany.MyLibrary.csproj \
   --output artifacts/packages
 ```
 
+Sem override de release, o pacote gerado usa a versão base `1.0.0`.
+
 Quando terminar de testar o template localmente, remova a instalação:
 
 ```bash
@@ -128,7 +133,9 @@ dotnet pack src/Template.Library/Template.Library.csproj \
   --configuration Release \
   --no-build \
   --output artifacts/packages
-dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
+dotnet run --file scripts/verify-package.cs -- artifacts/packages \
+  --require-source-link \
+  --expected-version 1.0.0
 ```
 
 ## Empacotamento e Source Link
@@ -143,6 +150,34 @@ O projeto de produção é packable e gera:
 No .NET 10, Source Link para GitHub é fornecido pelo SDK para projetos SDK-style, portanto a baseline não adiciona `Microsoft.SourceLink.GitHub` como dependência explícita.
 
 O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório e commit são derivados do contexto de Git/build. Isso impede que uma biblioteca gerada publique por engano a URL do repositório-base.
+
+## Versionamento SemVer
+
+A versão base é declarada uma única vez em `Directory.Build.props`:
+
+```xml
+<VersionPrefix>1.0.0</VersionPrefix>
+```
+
+Essa é a versão usada em builds e packs locais quando nenhum release override é fornecido. Os `.csproj` não devem duplicar `Version`, `VersionPrefix` ou `PackageVersion`.
+
+Para publicação, a **tag Git é a fonte de verdade**. O workflow de release remove apenas o prefixo `v` e passa o resultado através da propriedade MSBuild `Version`:
+
+```text
+v1.0.0          -> Version 1.0.0
+v1.2.3          -> Version 1.2.3
+v1.3.0-beta.1   -> Version 1.3.0-beta.1
+```
+
+O SDK deriva `PackageVersion` e a metadata de assembly dessa mesma versão. Seguindo as convenções do .NET:
+
+- `1.2.3` gera `AssemblyVersion`/`FileVersion` `1.2.3.0`;
+- `1.3.0-beta.1` gera `AssemblyVersion`/`FileVersion` `1.3.0.0`;
+- `InformationalVersion` preserva a SemVer completa e pode receber metadata determinística de commit após `+`.
+
+`scripts/verify-package.cs --expected-version` valida a versão do `.nuspec`, `AssemblyVersion`, `FileVersion` e `InformationalVersion` do assembly empacotado. Qualquer divergência interrompe o release antes do NuGet push.
+
+O `CHANGELOG.md` continua manual: antes de um release estável, consolide as mudanças relevantes de `Unreleased` para a seção da versão correspondente quando aplicável. O workflow não altera o changelog automaticamente.
 
 ## Análise de segurança
 
@@ -193,7 +228,13 @@ vMAJOR.MINOR.PATCH
 vMAJOR.MINOR.PATCH-prerelease
 ```
 
-O workflow valida a tag, remove apenas o prefixo `v`, usa essa versão no build/pack e executa `verify-package.cs --expected-version` antes de qualquer publicação.
+A primeira versão desta baseline é **`1.0.0`**, portanto a primeira tag de release esperada é:
+
+```text
+v1.0.0
+```
+
+O workflow valida a tag, remove apenas o prefixo `v`, usa `Version` como único override de release, verifica a versão resolvida pelo MSBuild e executa `verify-package.cs --expected-version` antes de qualquer publicação.
 
 `workflow_dispatch` exige uma versão explícita, mas é **sempre dry-run**: executa build/test/pack sem autenticar no NuGet.org e sem criar GitHub Release.
 
@@ -225,7 +266,9 @@ Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo no
 │       ├── dependency-review.yml
 │       ├── release.yml
 │       ├── sonar.yml
-│       └── template-validation.yml
+│       ├── sonar-template-validation.yml
+│       ├── template-validation.yml
+│       └── versioning-validation.yml
 ├── .template.config/
 │   └── template.json
 ├── docs/
@@ -250,12 +293,14 @@ Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo no
 
 ## O que entra no projeto gerado por `dotnet new`
 
-A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI, CodeQL, Dependency Review, SonarQube Cloud opcional e release, além do tooling de pacote e do scanner local.
+A maior parte da baseline é copiada: código, testes, lock files, build policies, **versão base 1.0.0**, dependências centralizadas, governança, workflows de CI, CodeQL, Dependency Review, SonarQube Cloud opcional e release, além do tooling de pacote e do scanner local.
 
-Conteúdo usado apenas para manter o template é excluído da saída:
+Conteúdo usado apenas para manter e validar o template é excluído da saída:
 
 - `.template.config/**`;
 - `.github/workflows/template-validation.yml`;
+- `.github/workflows/sonar-template-validation.yml`;
+- `.github/workflows/versioning-validation.yml`;
 - `docs/template-development.md`;
 - este README de manutenção.
 
@@ -272,9 +317,11 @@ Os workflows possuem responsabilidades separadas:
 - `.github/workflows/dependency-review.yml`: revisão do delta de dependências em pull requests;
 - `.github/workflows/sonar.yml`: análise SonarQube Cloud opcional, ativada por `SONAR_TOKEN`;
 - `.github/workflows/release.yml`: validação de versão, build/test/pack, Trusted Publishing e GitHub Release;
-- `.github/workflows/template-validation.yml`: geração de `Validation.SampleLibrary` e validação E2E da saída do `dotnet new`.
+- `.github/workflows/template-validation.yml`: geração de `Validation.SampleLibrary` e validação E2E da saída do `dotnet new`;
+- `.github/workflows/sonar-template-validation.yml`: validação maintenance-only do contrato Sonar e da saída gerada;
+- `.github/workflows/versioning-validation.yml`: validação maintenance-only da versão base `1.0.0`, stable, prerelease, metadata de assembly e mismatch.
 
-Separar os workflows torna regressões de CI, segurança, qualidade externa, release e template engine distinguíveis no GitHub Actions.
+Separar os workflows torna regressões de CI, segurança, qualidade externa, versionamento, release e template engine distinguíveis no GitHub Actions.
 
 ## Convenção `Template.Library`
 

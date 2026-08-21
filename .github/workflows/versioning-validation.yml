@@ -1,0 +1,228 @@
+name: Validação de versionamento
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: versioning-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  versioning-contract:
+    name: Validar versão base, stable e prerelease
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar ferramentas locais
+        run: dotnet tool restore
+
+      - name: Restaurar dependências em locked mode
+        run: dotnet restore Template.Library.slnx --locked-mode
+
+      - name: Validar fonte única da versão base
+        shell: bash
+        run: |
+          project='src/Template.Library/Template.Library.csproj'
+
+          read_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          version_prefix="$(read_property VersionPrefix)"
+          version="$(read_property Version)"
+          package_version="$(read_property PackageVersion)"
+
+          test "$version_prefix" = '1.0.0'
+          test "$version" = '1.0.0'
+          test "$package_version" = '1.0.0'
+
+          if grep -R -n -E '<(Version|VersionPrefix|PackageVersion)>' src tests --include='*.csproj'; then
+            echo 'Versão não deve ser duplicada nos projetos individuais.'
+            exit 1
+          fi
+
+      - name: Compilar versão base 1.0.0
+        run: dotnet build Template.Library.slnx --configuration Release --no-restore
+
+      - name: Executar testes da versão base
+        run: dotnet test Template.Library.slnx --configuration Release --no-build
+
+      - name: Empacotar versão base 1.0.0
+        run: >-
+          dotnet pack src/Template.Library/Template.Library.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/versioning/base
+
+      - name: Validar pacote e metadata da versão base
+        run: >-
+          dotnet run --file scripts/verify-package.cs -- artifacts/versioning/base
+          --require-source-link
+          --expected-version 1.0.0
+
+      - name: Instalar template do checkout
+        run: dotnet new install .
+
+      - name: Gerar biblioteca para validação de versionamento
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/versioning-template/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Validar contrato de versionamento da saída
+        shell: bash
+        run: |
+          test -s "$GENERATED_ROOT/Directory.Build.props"
+          test -s "$GENERATED_ROOT/.github/workflows/release.yml"
+          test -s "$GENERATED_ROOT/scripts/verify-package.cs"
+          test ! -e "$GENERATED_ROOT/.github/workflows/versioning-validation.yml"
+
+          grep -Fq '<VersionPrefix>1.0.0</VersionPrefix>' "$GENERATED_ROOT/Directory.Build.props"
+          grep -Fq 'VersionPrefix' "$GENERATED_ROOT/README.md"
+          grep -Fq '1.0.0' "$GENERATED_ROOT/README.md"
+          grep -Fq -- '-p:Version="$PACKAGE_VERSION"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq -- '--expected-version "$PACKAGE_VERSION"' "$GENERATED_ROOT/.github/workflows/release.yml"
+
+          if grep -Fq -- '-p:PackageVersion=' "$GENERATED_ROOT/.github/workflows/release.yml"; then
+            echo 'release.yml não deve manter um segundo override de PackageVersion.'
+            exit 1
+          fi
+
+          if grep -R -n -E '<(Version|VersionPrefix|PackageVersion)>' \
+            "$GENERATED_ROOT/src" "$GENERATED_ROOT/tests" --include='*.csproj'; then
+            echo 'Versão não deve ser duplicada nos projetos gerados.'
+            exit 1
+          fi
+
+      - name: Inicializar contexto Git da saída
+        shell: bash
+        run: |
+          git -C "$GENERATED_ROOT" init -b main
+          git -C "$GENERATED_ROOT" config user.name "Versioning Validation"
+          git -C "$GENERATED_ROOT" config user.email "versioning-validation@example.invalid"
+          git -C "$GENERATED_ROOT" add --all
+          git -C "$GENERATED_ROOT" commit -m "Initial generated library"
+          git -C "$GENERATED_ROOT" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restaurar ferramentas da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Restaurar dependências da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore Validation.SampleLibrary.slnx --locked-mode
+
+      - name: Validar versão base resolvida na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          project='src/Validation.SampleLibrary/Validation.SampleLibrary.csproj'
+
+          read_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          test "$(read_property VersionPrefix)" = '1.0.0'
+          test "$(read_property Version)" = '1.0.0'
+          test "$(read_property PackageVersion)" = '1.0.0'
+
+      - name: Validar release stable 1.2.3 na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          version='1.2.3'
+          output='artifacts/versioning/stable'
+
+          dotnet build Validation.SampleLibrary.slnx \
+            --configuration Release \
+            --no-restore \
+            -p:Version="$version"
+
+          dotnet test Validation.SampleLibrary.slnx \
+            --configuration Release \
+            --no-build
+
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj \
+            --configuration Release \
+            --no-build \
+            --output "$output" \
+            -p:Version="$version"
+
+          dotnet run --file scripts/verify-package.cs -- "$output" \
+            --require-source-link \
+            --expected-version "$version"
+
+          test -f "$output/Validation.SampleLibrary.1.2.3.nupkg"
+          test -f "$output/Validation.SampleLibrary.1.2.3.snupkg"
+
+      - name: Validar prerelease 1.3.0-beta.1 na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          version='1.3.0-beta.1'
+          output='artifacts/versioning/prerelease'
+
+          dotnet build Validation.SampleLibrary.slnx \
+            --configuration Release \
+            --no-restore \
+            -p:Version="$version"
+
+          dotnet test Validation.SampleLibrary.slnx \
+            --configuration Release \
+            --no-build
+
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj \
+            --configuration Release \
+            --no-build \
+            --output "$output" \
+            -p:Version="$version"
+
+          dotnet run --file scripts/verify-package.cs -- "$output" \
+            --require-source-link \
+            --expected-version "$version"
+
+          test -f "$output/Validation.SampleLibrary.1.3.0-beta.1.nupkg"
+          test -f "$output/Validation.SampleLibrary.1.3.0-beta.1.snupkg"
+
+      - name: Confirmar bloqueio de mismatch de versão
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          if dotnet run --file scripts/verify-package.cs -- artifacts/versioning/prerelease \
+            --require-source-link \
+            --expected-version 9.9.9; then
+            echo 'A validação deveria falhar quando a versão esperada diverge do pacote.'
+            exit 1
+          fi
+
+          echo 'Mismatch rejeitado antes de qualquer publicação externa, como esperado.'
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true

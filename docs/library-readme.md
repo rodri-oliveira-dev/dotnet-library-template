@@ -65,7 +65,46 @@ Before publishing a real package, replace the placeholder package description in
 dotnet run --file scripts/verify-package.cs -- artifacts/packages
 ```
 
-The verifier checks package identity, metadata, XML documentation, symbols, repository metadata, and Source Link information. Release automation also passes `--expected-version` so the package version must match the release tag before publication.
+The verifier checks package identity, metadata, XML documentation, symbols, repository metadata, and Source Link information. When `--expected-version` is supplied, it also validates the NuGet version plus `AssemblyVersion`, `FileVersion`, and `InformationalVersion` contained in the packaged assembly.
+
+## Versioning
+
+The library uses Semantic Versioning and has a single version source for normal local/development builds:
+
+```xml
+<VersionPrefix>1.0.0</VersionPrefix>
+```
+
+That property lives in `Directory.Build.props`. Do not duplicate `<Version>`, `<VersionPrefix>`, or `<PackageVersion>` across individual `.csproj` files.
+
+With no release override, build and pack resolve version **1.0.0**. For a published release, the Git tag becomes the source of truth and `.github/workflows/release.yml` passes the tag-derived value through the single MSBuild `Version` property:
+
+```text
+v1.0.0          -> Version 1.0.0
+v1.2.3          -> Version 1.2.3
+v1.3.0-beta.1   -> Version 1.3.0-beta.1
+```
+
+The .NET SDK then derives `PackageVersion` and assembly metadata from that value. Under the baseline conventions:
+
+```text
+1.2.3          -> AssemblyVersion/FileVersion 1.2.3.0
+1.3.0-beta.1   -> AssemblyVersion/FileVersion 1.3.0.0
+```
+
+`InformationalVersion` keeps the full SemVer value, including prerelease identifiers, and may include deterministic source revision metadata after a `+` suffix.
+
+A release never requires editing the same version in multiple files. The workflow validates the resolved MSBuild version, builds, tests, packs, and runs:
+
+```bash
+dotnet run --file scripts/verify-package.cs -- artifacts/packages \
+  --require-source-link \
+  --expected-version <version-from-tag>
+```
+
+Any mismatch fails before NuGet authentication/publication or GitHub Release creation.
+
+Before cutting a stable release, move relevant entries from the `Unreleased` section of `CHANGELOG.md` into the corresponding release section when applicable. The changelog is intentionally not rewritten automatically by the workflow.
 
 ## Continuous integration
 
@@ -127,13 +166,13 @@ Repository secrets and Repository Variables are administrative settings and are 
 A push of a tag such as:
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-validates the SemVer tag, restores dependencies in locked mode, builds, tests, packs with package version `1.2.3`, validates Source Link and the package version, publishes the package and `.snupkg` symbols to NuGet.org, and then creates the GitHub Release with those artifacts.
+validates the SemVer tag, restores dependencies in locked mode, resolves the same version through MSBuild, builds, tests, packs with package version `1.0.0`, validates package and assembly metadata, publishes the package and `.snupkg` symbols to NuGet.org, and then creates the GitHub Release with those artifacts.
 
-Manual `workflow_dispatch` runs are **dry-run only**: they require an explicit version such as `v1.2.3` but never publish to NuGet.org or create a GitHub Release.
+Manual `workflow_dispatch` runs are **dry-run only**: they require an explicit version such as `v1.0.0` or `v1.1.0-beta.1` but never publish to NuGet.org or create a GitHub Release.
 
 ### Configure NuGet.org Trusted Publishing
 
