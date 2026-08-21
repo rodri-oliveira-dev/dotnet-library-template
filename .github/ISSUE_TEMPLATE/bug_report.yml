@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a reproducible problem with the library.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please provide the smallest reproducible example you can.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the problem and why it matters.
+      placeholder: What is going wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Observed behavior
+      description: Describe what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest set of steps or code needed to reproduce the issue.
+      placeholder: |
+        1. Configure...
+        2. Run...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Package or project version
+      description: Version affected, when applicable.
+      placeholder: "1.2.3"
+
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK version
+      description: Output of `dotnet --version`.
+      placeholder: "10.0.x"
+    validations:
+      required: true
+
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Operating system and version, when relevant.
+      placeholder: "Ubuntu 24.04, Windows 11, macOS 15"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or exception details
+      description: Remove secrets, tokens, credentials, personal data, and other sensitive information before submitting.
+      render: shell

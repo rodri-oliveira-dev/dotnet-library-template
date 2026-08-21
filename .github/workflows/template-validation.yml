@@ -70,6 +70,44 @@ jobs:
             exit 1
           fi
 
+      - name: Verificar templates de colaboração do checkout
+        shell: bash
+        run: |
+          collaboration_files=(
+            ".github/ISSUE_TEMPLATE/bug_report.yml"
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+            ".github/pull_request_template.md"
+          )
+
+          for file in "${collaboration_files[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "Template de colaboração ausente ou vazio: $file"
+              exit 1
+            fi
+          done
+
+          grep -Fq 'name: Bug report' .github/ISSUE_TEMPLATE/bug_report.yml
+          grep -Fq 'description:' .github/ISSUE_TEMPLATE/bug_report.yml
+          grep -Fq 'body:' .github/ISSUE_TEMPLATE/bug_report.yml
+          grep -Fq 'id: reproduction' .github/ISSUE_TEMPLATE/bug_report.yml
+          grep -Fq 'id: dotnet' .github/ISSUE_TEMPLATE/bug_report.yml
+          grep -Fq 'id: logs' .github/ISSUE_TEMPLATE/bug_report.yml
+
+          grep -Fq 'name: Feature request' .github/ISSUE_TEMPLATE/feature_request.yml
+          grep -Fq 'id: problem' .github/ISSUE_TEMPLATE/feature_request.yml
+          grep -Fq 'id: solution' .github/ISSUE_TEMPLATE/feature_request.yml
+          grep -Fq 'id: alternatives' .github/ISSUE_TEMPLATE/feature_request.yml
+          grep -Fq 'id: public-api-impact' .github/ISSUE_TEMPLATE/feature_request.yml
+          grep -Fq 'id: breaking-change' .github/ISSUE_TEMPLATE/feature_request.yml
+
+          grep -Fq '## Related issue' .github/pull_request_template.md
+          grep -Fq 'dotnet build --configuration Release --no-restore' .github/pull_request_template.md
+          grep -Fq 'dotnet test --configuration Release --no-build' .github/pull_request_template.md
+          grep -Fq 'CHANGELOG.md' .github/pull_request_template.md
+          grep -Fq 'Breaking changes' .github/pull_request_template.md
+          grep -Fq 'New dependencies' .github/pull_request_template.md
+          grep -Fq 'sensitive information' .github/pull_request_template.md
+
       - name: Instalar template do checkout
         run: dotnet new install .
 
@@ -111,6 +149,9 @@ jobs:
             ".agents/skills/coverage-analysis/SKILL.md"
             ".agents/skills/test-anti-patterns/SKILL.md"
             ".agents/skills/ci-release-governance/SKILL.md"
+            ".github/ISSUE_TEMPLATE/bug_report.yml"
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+            ".github/pull_request_template.md"
             ".github/workflows/validation.yml"
             "scripts/verify-package.cs"
           )
@@ -138,6 +179,9 @@ jobs:
 
           grep -Fq '# Validation.SampleLibrary' "$GENERATED_ROOT/README.md"
           grep -Fq 'Directory.Packages.props' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'name: Bug report' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/bug_report.yml"
+          grep -Fq 'name: Feature request' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/feature_request.yml"
+          grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
 
       - name: Inicializar contexto Git da saída
         shell: bash
