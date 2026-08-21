@@ -243,15 +243,17 @@ A publicação no NuGet.org usa **Trusted Publishing** via GitHub OIDC e `NuGet/
 1. uma Trusted Publishing policy no nuget.org apontando para `release.yml`;
 2. a repository variable `NUGET_USER` com o profile name do nuget.org.
 
-O job NuGet recebe apenas `contents: read` e `id-token: write`. O job que cria o GitHub Release recebe `contents: write` somente depois que a publicação NuGet termina com sucesso.
+O job NuGet recebe apenas `contents: read` e `id-token: write`. Em bibliotecas com `PackageId` real, o GitHub Release só é criado depois que a publicação NuGet termina com sucesso. No source template, a publicação NuGet é propositalmente ignorada, mas o GitHub Release continua permitido para versionar o próprio template.
 
 ### Proteção contra publicação do placeholder
 
 Antes de publicar, o workflow resolve o `PackageId` real do projeto. A identidade neutra do source template é montada em partes no script (`"Template" + "." + "Library"`) para que o template engine não a substitua ao gerar uma biblioteca.
 
-Se o `PackageId` ainda corresponder a essa identidade placeholder, o output `safe-to-publish` fica `false` e os jobs de NuGet.org e GitHub Release são ignorados. Assim, este repositório — e também uma cópia direta criada pelo botão **Use this template** que ainda não tenha sido renomeada — pode validar restore/build/test/pack, mas não publicar o pacote placeholder.
+Se o `PackageId` ainda corresponder a essa identidade placeholder, o output `safe-to-publish` fica `false` e **somente o job de publicação NuGet é ignorado**. O job de GitHub Release continua e cria a release da tag sem anexar `Template.Library.nupkg`/`.snupkg`. Assim, este repositório pode publicar a release `v1.0.0` do próprio template sem jamais publicar o pacote placeholder no NuGet.
 
-Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo nome real da biblioteca enquanto a identidade de bloqueio permanece neutra; portanto, depois de configurar Trusted Publishing, a publicação por tag fica habilitada sem carregar nome ou ID específico do repositório-base.
+Uma cópia direta criada pelo botão **Use this template** que ainda não tenha sido renomeada recebe a mesma proteção: pode criar GitHub Release, mas não publicar `Template.Library` no NuGet nem anexar esses artefatos à release.
+
+Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo nome real da biblioteca enquanto a identidade de bloqueio permanece neutra; portanto, depois de configurar Trusted Publishing, a publicação por tag continua exigindo sucesso no NuGet e o GitHub Release recebe os `.nupkg`/`.snupkg` correspondentes.
 
 ## Estrutura resumida
 
