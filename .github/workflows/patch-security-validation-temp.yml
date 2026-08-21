@@ -1,0 +1,46 @@
+name: Temporary security validation patcher
+
+on:
+  push:
+    branches:
+      - fix/sonar-security-issues
+    paths:
+      - '.github/workflows/patch-security-validation-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7
+        with:
+          ref: fix/sonar-security-issues
+
+      - name: Require immutable NuGet login SHA in template validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/template-validation.yml')
+          text = path.read_text()
+          old = "grep -Fq 'NuGet/login@v1'"
+          new = "grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0'"
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected 2 moving-tag assertions, found {count}.')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Commit validation update
+        shell: bash
+        run: |
+          git config user.name 'Security Validation Patcher'
+          git config user.email 'security-validation@example.invalid'
+          git add -- .github/workflows/template-validation.yml
+          git diff --cached --exit-code && exit 0
+          git commit -m 'test: require pinned NuGet login action'
+          git push origin HEAD:fix/sonar-security-issues
