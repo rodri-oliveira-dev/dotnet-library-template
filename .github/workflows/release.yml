@@ -237,21 +237,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          artifacts/packages/*.nupkg
-          artifacts/packages/*.snupkg
-          --verify-tag
-          --generate-notes
-          --title "$RELEASE_TAG"
+        shell: bash
+        run: |
+          release_args=(--verify-tag --generate-notes --title "$RELEASE_TAG")
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "$RELEASE_TAG" \
+            artifacts/packages/*.nupkg \
+            artifacts/packages/*.snupkg \
+            "${release_args[@]}"
 
       - name: Create source-template GitHub Release without package artifacts
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
-        run: >-
-          gh release create "$RELEASE_TAG"
-          --verify-tag
-          --generate-notes
-          --title "$RELEASE_TAG"
+        shell: bash
+        run: |
+          release_args=(--verify-tag --generate-notes --title "$RELEASE_TAG")
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "$RELEASE_TAG" "${release_args[@]}"
