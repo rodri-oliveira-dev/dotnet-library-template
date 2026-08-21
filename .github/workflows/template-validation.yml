@@ -29,6 +29,47 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Verificar baseline de agentes do checkout
+        shell: bash
+        run: |
+          agent_files=(
+            "AGENTS.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
+          )
+
+          for file in "${agent_files[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "Arquivo de orientação ausente ou vazio: $file"
+              exit 1
+            fi
+          done
+
+          grep -Fq 'Directory.Packages.props' AGENTS.md
+          grep -Fq 'Directory.Build.props' AGENTS.md
+          grep -Fq 'dotnet restore --locked-mode' AGENTS.md
+          grep -Fq 'dotnet build --configuration Release --no-restore' AGENTS.md
+          grep -Fq 'dotnet test --configuration Release --no-build' AGENTS.md
+          grep -Fq 'CHANGELOG.md' AGENTS.md
+
+          for file in "${agent_files[@]:1}"; do
+            head -n 1 "$file" | grep -Fxq -- '---'
+            grep -Eq '^name: [a-z0-9-]+$' "$file"
+            grep -Fq 'description:' "$file"
+          done
+
+          forbidden='dotnet-library-template|WebApiCoreSeed|LedgerService|poc-arquitetura|web-api-core-seed|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers'
+          matches="$(grep -R -I -n -E "$forbidden" AGENTS.md .agents || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Referência específica de outro repositório encontrada na baseline de agentes:"
+            echo "$matches"
+            exit 1
+          fi
+
       - name: Instalar template do checkout
         run: dotnet new install .
 
@@ -64,6 +105,12 @@ jobs:
             "CONTRIBUTING.md"
             "CODE_OF_CONDUCT.md"
             "CHANGELOG.md"
+            "AGENTS.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
             ".github/workflows/validation.yml"
             "scripts/verify-package.cs"
           )
@@ -90,6 +137,7 @@ jobs:
           done
 
           grep -Fq '# Validation.SampleLibrary' "$GENERATED_ROOT/README.md"
+          grep -Fq 'Directory.Packages.props' "$GENERATED_ROOT/AGENTS.md"
 
       - name: Inicializar contexto Git da saída
         shell: bash
@@ -145,7 +193,7 @@ jobs:
       - name: Verificar ausência de resíduos
         shell: bash
         run: |
-          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template'
+          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template|WebApiCoreSeed|LedgerService|poc-arquitetura|web-api-core-seed'
           matches="$(grep -R -I -n -E "$forbidden" "$GENERATED_ROOT" \
             --exclude-dir=.git \
             --exclude-dir=bin \
