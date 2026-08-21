@@ -1,6 +1,6 @@
 # .NET Library Template
 
-Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança, release e governança.
+Template opinativo e reutilizável para iniciar bibliotecas .NET 10 com uma baseline consistente de build, testes, dependências, empacotamento, CI, segurança, qualidade, release e governança.
 
 O repositório pode ser usado de duas formas:
 
@@ -20,11 +20,11 @@ Para manutenção do próprio template, consulte [docs/template-development.md](
 - xUnit v3 sobre Microsoft Testing Platform;
 - AwesomeAssertions e NSubstitute;
 - cobertura via Coverlet MTP;
-- manifesto local de ferramentas .NET;
+- manifesto local de ferramentas .NET, incluindo SonarScanner for .NET;
 - `.nupkg`, `.snupkg`, documentação XML e Source Link;
 - validação do pacote em um consumidor temporário;
 - licença MIT, contribuição, Code of Conduct e changelog;
-- GitHub Actions para CI, CodeQL, Dependency Review, release e validação end-to-end do custom template;
+- GitHub Actions para CI, CodeQL, Dependency Review, SonarQube Cloud opcional, release e validação end-to-end do custom template;
 - artefatos de cobertura Cobertura e pacotes NuGet publicados pelo CI para diagnóstico;
 - release por tag com versionamento validado, NuGet.org Trusted Publishing/OIDC e GitHub Release.
 
@@ -58,6 +58,7 @@ Antes de publicar ou liberar a biblioteca:
 - revise o README, licença e metadados públicos;
 - configure uma política de NuGet.org Trusted Publishing para `.github/workflows/release.yml`;
 - configure a repository variable `NUGET_USER` com o profile name do nuget.org;
+- se quiser SonarQube Cloud, configure o repository secret `SONAR_TOKEN` e, quando necessário, as variables `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION` e `SONAR_HOST_URL`;
 - configure branch protection ou rulesets para `main`;
 - revise as permissões padrão do GitHub Actions;
 - configure environments quando houver deploy/publicação protegida;
@@ -143,6 +144,38 @@ O `RepositoryUrl` não fica hard-coded no projeto: os metadados de repositório 
 
 `.github/workflows/dependency-review.yml` analisa o delta de dependências dos pull requests para `main` e bloqueia vulnerabilidades novas High/Critical.
 
+## Análise opcional com SonarQube Cloud
+
+`.github/workflows/sonar.yml` executa SonarScanner for .NET em pull requests para `main` e pushes em `main`, mas somente quando o repository secret abaixo está disponível:
+
+```text
+SONAR_TOKEN
+```
+
+Se `SONAR_TOKEN` estiver ausente ou vazio, o workflow termina com sucesso e **não** inicia o scanner nem tenta enviar dados ao Sonar. Isso mantém o Sonar opt-in e também evita quebra de pull requests de forks que não recebem repository secrets.
+
+O scanner está pinado como ferramenta local em `.config/dotnet-tools.json`, portanto `dotnet tool restore` prepara a mesma versão no CI e no projeto gerado.
+
+Por padrão, o workflow deriva coordenadas compatíveis com projetos SonarQube Cloud importados do GitHub:
+
+```text
+project key  = <github-owner>_<repository-name>
+organization = <github-owner>
+host         = https://sonarcloud.io
+```
+
+Quando o projeto Sonar usa coordenadas diferentes, elas podem ser sobrescritas por Repository Variables:
+
+```text
+SONAR_PROJECT_KEY
+SONAR_ORGANIZATION
+SONAR_HOST_URL
+```
+
+O fluxo usa locked restore, build Release não incremental e Coverlet MTP no formato OpenCover. O relatório `coverage.opencover*.xml` é enviado através de `sonar.cs.opencover.reportsPaths`, sem alterar o relatório Cobertura utilizado pelo CI principal.
+
+Secrets e Repository Variables não são copiados para repositórios criados a partir deste template. O workflow é copiado, mas permanece inativo até que o novo repositório configure seu próprio `SONAR_TOKEN`.
+
 ## Release e publicação NuGet
 
 `.github/workflows/release.yml` separa validação, publicação NuGet e criação do GitHub Release.
@@ -185,6 +218,7 @@ Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo no
 │       ├── codeql.yml
 │       ├── dependency-review.yml
 │       ├── release.yml
+│       ├── sonar.yml
 │       └── template-validation.yml
 ├── .template.config/
 │   └── template.json
@@ -210,7 +244,7 @@ Em uma biblioteca criada via `dotnet new`, o `PackageId` é substituído pelo no
 
 ## O que entra no projeto gerado por `dotnet new`
 
-A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI, CodeQL, Dependency Review e release, além do tooling de pacote.
+A maior parte da baseline é copiada: código, testes, lock files, build policies, dependências centralizadas, governança, workflows de CI, CodeQL, Dependency Review, SonarQube Cloud opcional e release, além do tooling de pacote e do scanner local.
 
 Conteúdo usado apenas para manter o template é excluído da saída:
 
@@ -230,10 +264,11 @@ Os workflows possuem responsabilidades separadas:
 - `.github/workflows/ci.yml`: restore, build, testes, cobertura, pack e artefatos;
 - `.github/workflows/codeql.yml`: análise estática CodeQL para C#;
 - `.github/workflows/dependency-review.yml`: revisão do delta de dependências em pull requests;
+- `.github/workflows/sonar.yml`: análise SonarQube Cloud opcional, ativada por `SONAR_TOKEN`;
 - `.github/workflows/release.yml`: validação de versão, build/test/pack, Trusted Publishing e GitHub Release;
 - `.github/workflows/template-validation.yml`: geração de `Validation.SampleLibrary` e validação E2E da saída do `dotnet new`.
 
-Separar os workflows torna regressões de CI, segurança, release e template engine distinguíveis no GitHub Actions.
+Separar os workflows torna regressões de CI, segurança, qualidade externa, release e template engine distinguíveis no GitHub Actions.
 
 ## Convenção `Template.Library`
 

@@ -1,5 +1,13 @@
 {
   "version": 1,
   "isRoot": true,
-  "tools": {}
+  "tools": {
+    "dotnet-sonarscanner": {
+      "version": "11.2.1",
+      "commands": [
+        "dotnet-sonarscanner"
+      ],
+      "rollForward": false
+    }
+  }
 }

@@ -22,6 +22,8 @@ dotnet tool restore
 dotnet restore --locked-mode
 ```
 
+The local tool manifest includes SonarScanner for .NET. Installing/restoring the tool does not enable SonarQube Cloud analysis by itself; the integration remains opt-in through the `SONAR_TOKEN` repository secret.
+
 ## Build
 
 ```bash
@@ -80,6 +82,44 @@ The workflow uses read-only repository permissions and cancels superseded runs f
 
 `.github/workflows/dependency-review.yml` reviews dependency changes in pull requests and blocks newly introduced High/Critical known vulnerabilities.
 
+## Optional SonarQube Cloud analysis
+
+`.github/workflows/sonar.yml` provides optional SonarQube Cloud analysis for pull requests to `main` and pushes to `main`.
+
+The integration is deliberately opt-in. If the repository secret below does not exist or is empty, the workflow reports that SonarQube Cloud is disabled and finishes successfully without starting the scanner or contacting Sonar:
+
+```text
+SONAR_TOKEN
+```
+
+For repositories imported from GitHub using SonarQube Cloud's conventional coordinates, the workflow derives defaults from the GitHub repository itself:
+
+```text
+project key  = <github-owner>_<repository-name>
+organization = <github-owner>
+host         = https://sonarcloud.io
+```
+
+These values can be overridden with GitHub Repository Variables when the Sonar project uses different coordinates:
+
+```text
+SONAR_PROJECT_KEY
+SONAR_ORGANIZATION
+SONAR_HOST_URL
+```
+
+Typical setup:
+
+1. Create or import the repository project in SonarQube Cloud.
+2. Add repository secret `SONAR_TOKEN` with a token authorized to analyze that project.
+3. If the derived coordinates do not match the Sonar project, add `SONAR_PROJECT_KEY` and/or `SONAR_ORGANIZATION` repository variables.
+4. Optionally set `SONAR_HOST_URL`; otherwise `https://sonarcloud.io` is used.
+5. Open a pull request or push to `main` and confirm the analysis appears in SonarQube Cloud.
+
+The workflow uses the locally pinned SonarScanner for .NET, locked restore, a non-incremental Release build, tests, and Coverlet MTP output in OpenCover format. The OpenCover report is imported through `sonar.cs.opencover.reportsPaths`; this does not replace the Cobertura artifact produced by the primary CI workflow.
+
+Repository secrets and Repository Variables are administrative settings and are not inherited when another repository is created from this template. A generated repository therefore remains fully usable without Sonar until `SONAR_TOKEN` is configured.
+
 ## Release and NuGet publishing
 
 `.github/workflows/release.yml` provides the release path for generated libraries.
@@ -121,7 +161,8 @@ If NuGet authentication or publication fails, the GitHub Release job does not ru
 │       ├── ci.yml
 │       ├── codeql.yml
 │       ├── dependency-review.yml
-│       └── release.yml
+│       ├── release.yml
+│       └── sonar.yml
 ├── scripts/
 │   └── verify-package.cs
 ├── src/
@@ -144,6 +185,7 @@ Repository-level settings are not stored in Git, so they are not automatically r
 
 - the NuGet.org Trusted Publishing policy for `release.yml`;
 - the `NUGET_USER` repository variable;
+- optional SonarQube Cloud secret `SONAR_TOKEN` and any `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION`, or `SONAR_HOST_URL` overrides;
 - branch protection or rulesets;
 - environments and deployment protection rules, if your project adds them;
 - default GitHub Actions permissions;
