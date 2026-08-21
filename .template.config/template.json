@@ -29,6 +29,7 @@
         "**/*.filelist",
         "**/*.user",
         "README.md",
+        "README.en.md",
         "docs/template-development.md",
         "docs/repository-administration.md",
         ".github/workflows/template-validation.yml",
