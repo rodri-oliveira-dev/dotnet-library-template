@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Restore, build e testes
+    name: Restore, formatação, build e testes
     runs-on: ubuntu-latest
 
     steps:
@@ -28,8 +28,31 @@ jobs:
       - name: Restaurar dependências
         run: dotnet restore Template.Library.slnx
 
+      - name: Verificar formatação
+        run: dotnet format Template.Library.slnx --verify-no-changes --no-restore
+
       - name: Compilar
         run: dotnet build Template.Library.slnx --configuration Release --no-restore
 
       - name: Executar testes
         run: dotnet test Template.Library.slnx --configuration Release --no-build
+
+      - name: Verificar line endings
+        shell: bash
+        run: |
+          unexpected="$({ git ls-files --eol -- '*.cs' '*.csproj' '*.props' '*.targets' '*.sln' '*.slnx' '*.json' '*.xml' '*.yaml' '*.yml' '*.md' '.editorconfig' '.gitignore' '.gitattributes' '*.sh' '*.ps1'; } | grep -E 'w/(crlf|mixed)' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Arquivos que deveriam usar LF possuem line endings inesperados:"
+            echo "$unexpected"
+            exit 1
+          fi
+
+      - name: Verificar árvore de trabalho limpa
+        shell: bash
+        run: |
+          status="$(git status --porcelain --untracked-files=all)"
+          if [ -n "$status" ]; then
+            echo "Restore, build ou testes deixaram artefatos não ignorados:"
+            echo "$status"
+            exit 1
+          fi

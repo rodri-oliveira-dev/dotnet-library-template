@@ -1,0 +1,49 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+artifacts/
+
+# Testes e cobertura
+TestResults/
+**/TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+/coverage-*/
+/coverage.*
+CodeCoverage/
+
+# IDEs e estado local do workspace
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Caches locais e diagnósticos do .NET/NuGet
+.dotnet/
+.dotnet-home/
+.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+*.binlog
+
+# Pacotes gerados localmente
+*.nupkg
+*.snupkg
+
+# Logs e arquivos temporários
+*.log
+*.tmp
+*.temp
+~$*
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+Desktop.ini
