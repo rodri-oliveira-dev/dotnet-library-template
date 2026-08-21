@@ -22,7 +22,12 @@ if [[ -z "$validated_sha" ]]; then
 fi
 
 if [[ "$is_manual_release" == "true" ]]; then
-  if git ls-remote --exit-code --tags "$remote_name" "refs/tags/$release_tag" >/dev/null 2>&1; then
+  if ! remote_tag="$(git ls-remote --tags "$remote_name" "refs/tags/$release_tag")"; then
+    echo "::error::Could not query remote '$remote_name' before creating release tag '$release_tag'."
+    exit 1
+  fi
+
+  if [[ -n "$remote_tag" ]]; then
     echo "::error::Release tag '$release_tag' was created after validation started. Aborting to avoid publishing a different commit."
     exit 1
   fi
