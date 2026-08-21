@@ -91,7 +91,7 @@ jobs:
 
           if [ "$package_id" = "$placeholder_package_id" ]; then
             safe_to_publish=false
-            echo 'Source-template package identity detected. External publication will be skipped.'
+            echo 'Source-template package identity detected. NuGet publication will be skipped.'
           fi
 
           echo "package_id=$package_id" >> "$GITHUB_OUTPUT"
@@ -213,21 +213,27 @@ jobs:
       - build-and-pack
       - publish-nuget
     if: >-
+      always() &&
+      needs.build-and-pack.result == 'success' &&
       needs.build-and-pack.outputs.should-publish == 'true' &&
-      needs.build-and-pack.outputs.safe-to-publish == 'true' &&
-      needs.publish-nuget.result == 'success'
+      (
+        needs.build-and-pack.outputs.safe-to-publish == 'false' ||
+        needs.publish-nuget.result == 'success'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download release artifacts
+      - name: Download published package artifacts
+        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: release-packages
           path: artifacts/packages
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release with NuGet artifacts
+        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
@@ -235,6 +241,17 @@ jobs:
           gh release create "$RELEASE_TAG"
           artifacts/packages/*.nupkg
           artifacts/packages/*.snupkg
+          --verify-tag
+          --generate-notes
+          --title "$RELEASE_TAG"
+
+      - name: Create source-template GitHub Release without package artifacts
+        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
+        run: >-
+          gh release create "$RELEASE_TAG"
           --verify-tag
           --generate-notes
           --title "$RELEASE_TAG"
