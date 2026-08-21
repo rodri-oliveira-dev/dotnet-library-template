@@ -1,0 +1,153 @@
+name: Validação do template Sonar
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-template-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  disabled-contract:
+    name: Validar Sonar sem token
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ''
+
+    steps:
+      - name: Confirmar caminho opt-in desabilitado
+        if: ${{ env.SONAR_TOKEN == '' }}
+        run: echo "Sonar desabilitado sem token, como esperado."
+
+      - name: Falhar se caminho Sonar for ativado sem token
+        if: ${{ env.SONAR_TOKEN != '' }}
+        run: exit 1
+
+  generated-contract:
+    name: Validar Sonar no projeto gerado
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verificar contrato Sonar do checkout
+        shell: bash
+        run: |
+          workflow='.github/workflows/sonar.yml'
+          manifest='.config/dotnet-tools.json'
+
+          test -s "$workflow"
+          test -s "$manifest"
+
+          grep -Fq '"dotnet-sonarscanner"' "$manifest"
+          grep -Fq '"version": "11.2.1"' "$manifest"
+          grep -Fq 'pull_request:' "$workflow"
+          grep -Fq 'push:' "$workflow"
+          grep -Fq 'contents: read' "$workflow"
+          grep -Fq 'SONAR_TOKEN:' "$workflow"
+          grep -Fq 'secrets.SONAR_TOKEN' "$workflow"
+          grep -Fq 'vars.SONAR_PROJECT_KEY' "$workflow"
+          grep -Fq 'vars.SONAR_ORGANIZATION' "$workflow"
+          grep -Fq 'vars.SONAR_HOST_URL' "$workflow"
+          grep -Fq 'github.repository_owner' "$workflow"
+          grep -Fq 'github.event.repository.name' "$workflow"
+          grep -Fq 'https://sonarcloud.io' "$workflow"
+          grep -Fq 'fetch-depth: 0' "$workflow"
+          grep -Fq 'env.SONAR_TOKEN == ' "$workflow"
+          grep -Fq 'env.SONAR_TOKEN != ' "$workflow"
+          grep -Fq 'dotnet tool restore' "$workflow"
+          grep -Fq 'dotnet restore Template.Library.slnx --locked-mode' "$workflow"
+          grep -Fq 'dotnet sonarscanner begin' "$workflow"
+          grep -Fq '/d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"' "$workflow"
+          grep -Fq 'dotnet build Template.Library.slnx --configuration Release --no-restore --no-incremental' "$workflow"
+          grep -Fq -- '--coverlet-output-format opencover' "$workflow"
+          grep -Fq 'dotnet sonarscanner end' "$workflow"
+
+          if grep -Eq 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$workflow"; then
+            echo "Workflow Sonar contém identidade específica do source repository."
+            exit 1
+          fi
+
+      - name: Restaurar ferramentas locais
+        run: dotnet tool restore
+
+      - name: Confirmar SonarScanner local
+        shell: bash
+        run: |
+          tools="$(dotnet tool list --local)"
+          echo "$tools"
+          grep -Fq 'dotnet-sonarscanner' <<< "$tools"
+          grep -Fq '11.2.1' <<< "$tools"
+
+      - name: Instalar template do checkout
+        run: dotnet new install .
+
+      - name: Gerar biblioteca de validação
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/generated-sonar-template/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Verificar contrato Sonar da saída
+        shell: bash
+        run: |
+          workflow="$GENERATED_ROOT/.github/workflows/sonar.yml"
+          manifest="$GENERATED_ROOT/.config/dotnet-tools.json"
+          readme="$GENERATED_ROOT/README.md"
+
+          test -s "$workflow"
+          test -s "$manifest"
+          test -s "$readme"
+          test ! -e "$GENERATED_ROOT/.github/workflows/sonar-template-validation.yml"
+
+          grep -Fq '"dotnet-sonarscanner"' "$manifest"
+          grep -Fq '"version": "11.2.1"' "$manifest"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$workflow"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore --no-incremental' "$workflow"
+          grep -Fq 'SONAR_TOKEN' "$workflow"
+          grep -Fq 'vars.SONAR_PROJECT_KEY' "$workflow"
+          grep -Fq 'vars.SONAR_ORGANIZATION' "$workflow"
+          grep -Fq 'vars.SONAR_HOST_URL' "$workflow"
+          grep -Fq 'Optional SonarQube Cloud analysis' "$readme"
+
+          if grep -R -I -n -E 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$GENERATED_ROOT" \
+            --exclude-dir=.git --exclude-dir=bin --exclude-dir=obj --exclude-dir=artifacts; then
+            echo "Identidade Sonar do source repository vazou para a saída gerada."
+            exit 1
+          fi
+
+      - name: Restaurar ferramentas da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Restaurar dependências da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore --locked-mode
+
+      - name: Compilar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Executar testes da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true
