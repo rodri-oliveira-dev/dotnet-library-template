@@ -100,13 +100,27 @@ jobs:
           test -s "$GENERATED_ROOT/scripts/verify-package.cs"
           test ! -e "$GENERATED_ROOT/.github/workflows/versioning-validation.yml"
 
+          release="$GENERATED_ROOT/.github/workflows/release.yml"
+
           grep -Fq '<VersionPrefix>1.0.0</VersionPrefix>' "$GENERATED_ROOT/Directory.Build.props"
           grep -Fq 'VersionPrefix' "$GENERATED_ROOT/README.md"
           grep -Fq '1.0.0' "$GENERATED_ROOT/README.md"
-          grep -Fq -- '-p:Version="$PACKAGE_VERSION"' "$GENERATED_ROOT/.github/workflows/release.yml"
-          grep -Fq -- '--expected-version "$PACKAGE_VERSION"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq -- '-p:Version="$PACKAGE_VERSION"' "$release"
+          grep -Fq -- '--expected-version "$PACKAGE_VERSION"' "$release"
+          grep -Fq 'always() &&' "$release"
+          grep -Fq "needs.build-and-pack.outputs.safe-to-publish == 'false' ||" "$release"
+          grep -Fq "needs.publish-nuget.result == 'success'" "$release"
+          grep -Fq 'Create GitHub Release with NuGet artifacts' "$release"
+          grep -Fq 'Create source-template GitHub Release without package artifacts' "$release"
+          grep -Fq 'Download published package artifacts' "$release"
 
-          if grep -Fq -- '-p:PackageVersion=' "$GENERATED_ROOT/.github/workflows/release.yml"; then
+          source_block="$(awk '/Create source-template GitHub Release without package artifacts/{capture=1} capture{print}' "$release")"
+          if grep -Fq 'artifacts/packages/' <<<"$source_block"; then
+            echo 'A rota de GitHub Release do placeholder não deve anexar pacotes.'
+            exit 1
+          fi
+
+          if grep -Fq -- '-p:PackageVersion=' "$release"; then
             echo 'release.yml não deve manter um segundo override de PackageVersion.'
             exit 1
           fi

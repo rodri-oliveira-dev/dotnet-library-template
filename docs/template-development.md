@@ -200,19 +200,19 @@ The template intentionally does **not** store or request a long-lived `NUGET_API
 
 ### Placeholder publication guard
 
-The source template must be able to validate a release without ever publishing its neutral package identity. At the same time, the guard itself must not carry source-repository names or IDs into generated projects.
+The source template must be able to create versioned GitHub Releases without ever publishing its neutral package identity. At the same time, the guard itself must not carry source-repository names or IDs into generated projects.
 
 `release.yml` therefore resolves the actual `PackageId` and compares it to the neutral placeholder. The placeholder is assembled from separate shell string fragments (`"Template"`, `"."`, `"Library"`) so the template engine does not replace that comparison when generating a project.
 
 This gives the desired behavior:
 
-- in the source template, `PackageId` is the placeholder, so `safe-to-publish=false` and external publishing jobs are skipped;
-- in a direct GitHub Template copy that has not yet been renamed, the same protection remains active;
+- in the source template, `PackageId` is the placeholder, so `safe-to-publish=false`; NuGet publication is skipped, but the pushed SemVer tag still creates a GitHub Release without `.nupkg`/`.snupkg` attachments;
+- in a direct GitHub Template copy that has not yet been renamed, the same protection remains active: GitHub Release is allowed, placeholder NuGet publication and package attachments are not;
 - in a project created via `dotnet new`, the project/package identity is replaced with the generated library name, while the neutral comparison remains unchanged, so publication is allowed after Trusted Publishing is configured.
 
-This mechanism blocks the source package without embedding repository-specific metadata in reusable output.
+The `github-release` job uses `always()` because `publish-nuget` is expected to be `skipped` for the placeholder path. For a real package (`safe-to-publish=true`), GitHub Release still requires `publish-nuget.result == 'success'` and attaches the generated `.nupkg`/`.snupkg`. For the placeholder path, it creates only the GitHub Release metadata/release notes.
 
-The GitHub Release job depends on successful NuGet publication, preventing a GitHub Release from being created after a failed NuGet authentication/push.
+This mechanism blocks the source package without embedding repository-specific metadata in reusable output, while still allowing this template repository to publish releases such as `v1.0.0`.
 
 ## Install the template locally
 
@@ -283,7 +283,7 @@ A valid generated project must not contain unintended matches.
 
 `.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, packaged assembly metadata, and a negative mismatch case.
 
-Release changes must additionally confirm that `release.yml` is copied to generated projects, that project paths inside it follow the generated identity, that the neutral placeholder guard remains intact, and that no source-repository name or ID is introduced into the generated workflow.
+Release changes must additionally confirm that `release.yml` is copied to generated projects, that project paths inside it follow the generated identity, that the neutral placeholder guard remains intact, that the placeholder route can create GitHub Release without package artifacts, that real-package GitHub Release remains gated on successful NuGet publication, and that no source-repository name or ID is introduced into the generated workflow.
 
 Versioning changes must confirm that `Directory.Build.props` remains the sole baseline version source, generated projects retain `VersionPrefix=1.0.0`, release uses only `Version` as the override, and stable/prerelease package metadata remains coherent.
 
