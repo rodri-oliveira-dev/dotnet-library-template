@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Restore, formatação, build e testes
+    name: Restore bloqueado, formatação, build e testes
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +25,56 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restaurar dependências
-        run: dotnet restore Template.Library.slnx
+      - name: Restaurar dependências em locked mode
+        run: dotnet restore Template.Library.slnx --locked-mode
+
+      - name: Verificar políticas compartilhadas de build
+        shell: bash
+        run: |
+          project="src/Template.Library/Template.Library.csproj"
+
+          get_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          assert_equals() {
+            property="$1"
+            expected="$2"
+            actual="$(get_property "$property")"
+
+            if [ "$actual" != "$expected" ]; then
+              echo "$property: esperado '$expected', obtido '$actual'."
+              exit 1
+            fi
+          }
+
+          assert_contains() {
+            property="$1"
+            expected="$2"
+            actual="$(get_property "$property")"
+
+            if [[ "$actual" != *"$expected"* ]]; then
+              echo "$property deveria conter '$expected', obtido '$actual'."
+              exit 1
+            fi
+          }
+
+          assert_equals Nullable enable
+          assert_equals ImplicitUsings enable
+          assert_equals TreatWarningsAsErrors true
+          assert_equals NuGetAudit true
+          assert_equals NuGetAuditMode all
+          assert_equals RestoreEnablePackagePruning true
+          assert_equals RestorePackagesWithLockFile true
+          assert_equals Deterministic true
+          assert_equals ContinuousIntegrationBuild true
+          assert_contains WarningsNotAsErrors NU1901
+          assert_contains WarningsNotAsErrors NU1902
+          assert_contains WarningsAsErrors NU1903
+          assert_contains WarningsAsErrors NU1904
 
       - name: Verificar formatação
         run: dotnet format Template.Library.slnx --verify-no-changes --no-restore
