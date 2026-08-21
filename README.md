@@ -17,9 +17,11 @@ A baseline atual fornece:
 - assertions com AwesomeAssertions e substitutes com NSubstitute;
 - cobertura com Coverlet MTP;
 - manifesto local de ferramentas .NET;
+- empacotamento NuGet com `.nupkg` e `.snupkg`;
+- documentação XML e Source Link integrado pelo SDK do .NET;
 - validação automática no GitHub Actions.
 
-As capacidades restantes do roadmap, como empacotamento NuGet, Source Link, documentação de governança e evolução do template via `dotnet new`, são implementadas em etapas independentes.
+As capacidades restantes do roadmap, como documentação de governança, release e evolução do template via `dotnet new`, são implementadas em etapas independentes.
 
 ## Estrutura
 
@@ -30,6 +32,8 @@ As capacidades restantes do roadmap, como empacotamento NuGet, Source Link, docu
 ├── .github/
 │   └── workflows/
 │       └── validation.yml
+├── scripts/
+│   └── verify-package.cs
 ├── src/
 │   └── Template.Library/
 ├── tests/
@@ -112,6 +116,38 @@ dotnet test Template.Library.slnx --configuration Release --no-build
 dotnet test Template.Library.slnx --configuration Release --no-build --coverlet --coverlet-output-format cobertura
 ```
 
+### Gerar os pacotes NuGet
+
+```bash
+dotnet pack src/Template.Library/Template.Library.csproj \
+  --configuration Release \
+  --no-build \
+  --output artifacts/packages
+```
+
+O comando gera:
+
+- `Template.Library.<versão>.nupkg`, contendo a biblioteca e a documentação XML;
+- `Template.Library.<versão>.snupkg`, contendo o PDB portátil usado para depuração.
+
+O projeto usa `Template.Library` como `PackageId` neutro e substituível. A descrição do pacote está marcada como `TODO` para que o projeto gerado a personalize antes da publicação.
+
+### Validar o pacote gerado
+
+```bash
+dotnet run --file scripts/verify-package.cs -- artifacts/packages
+```
+
+A validação verifica o `.nuspec`, documentação XML, pacote de símbolos, metadados de repositório e a entrada Source Link do PDB portátil.
+
+## Source Link
+
+No .NET 10, Source Link para GitHub já faz parte do SDK e é habilitado automaticamente para projetos SDK-style. Por isso o template não adiciona `Microsoft.SourceLink.GitHub` como dependência.
+
+`PublishRepositoryUrl` faz com que o repositório e o commit detectados durante o build sejam publicados no `.nuspec`. O template **não possui `RepositoryUrl` hard-coded**, de modo que uma biblioteca gerada pode publicar os metadados do seu próprio repositório.
+
+A baseline usa PDB portátil e `.snupkg`, formato aceito pelo servidor de símbolos do NuGet.org.
+
 ## Validação automática
 
 O workflow `.github/workflows/validation.yml` executa automaticamente em pull requests e pushes para a branch `main`.
@@ -125,7 +161,10 @@ Entre as verificações atuais estão:
 5. build em `Release`;
 6. testes via Microsoft Testing Platform;
 7. cobertura com Coverlet MTP;
-8. line endings e limpeza da árvore de trabalho.
+8. geração de `.nupkg` e `.snupkg`;
+9. inspeção de metadados, XML docs e Source Link;
+10. instalação e build do pacote em um projeto consumidor temporário;
+11. line endings e limpeza da árvore de trabalho.
 
 ## Convenção de nomes
 
