@@ -177,7 +177,6 @@ jobs:
             echo "Workflow CodeQL contém permissão, secret ou autobuild não permitido pela baseline."
             exit 1
           fi
-
       - name: Verificar workflows de dependências e release no checkout
         shell: bash
         run: |
@@ -191,7 +190,7 @@ jobs:
 
           test -s "$release"
           grep -Fq 'workflow_dispatch:' "$release"
-          grep -Fq 'NuGet/login@v1' "$release"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'actions/upload-artifact@v7' "$release"
           grep -Fq 'actions/download-artifact@v8' "$release"
           grep -Fq 'id-token: write' "$release"
@@ -301,7 +300,7 @@ jobs:
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'actions/dependency-review-action@v5' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
-          grep -Fq 'NuGet/login@v1' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/release.yml"
@@ -357,7 +356,6 @@ jobs:
         run: |
           package="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.nupkg"
           symbols="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.snupkg"
-
           test -f "$package"
           test -f "$symbols"
 
