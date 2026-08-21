@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose an improvement or new capability for the library.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user or developer problem this proposal addresses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Desired solution
+      description: Describe the behavior or API you would like to have.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe workarounds or alternative designs you considered.
+
+  - type: dropdown
+    id: public-api-impact
+    attributes:
+      label: Expected public API impact
+      description: Choose the closest expected impact.
+      options:
+        - No public API change
+        - Additive public API change
+        - Potentially breaking change
+        - Breaking change
+        - Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: breaking-change
+    attributes:
+      label: Breaking-change considerations
+      description: If the proposal can break existing consumers, explain the impact and possible migration path.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, links, benchmarks, or other context that helps evaluate the proposal.
