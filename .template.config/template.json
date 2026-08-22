@@ -32,10 +32,13 @@
         "README.en.md",
         "docs/template-development.md",
         "docs/repository-administration.md",
+        ".github/workflows/initialize-repository.yml",
         ".github/workflows/template-validation.yml",
         ".github/workflows/sonar-template-validation.yml",
         ".github/workflows/versioning-validation.yml",
-        ".github/workflows/release-publishing-validation.yml"
+        ".github/workflows/release-publishing-validation.yml",
+        ".github/workflows/github-template-initialization-validation.yml",
+        "scripts/initialize-repository.sh"
       ],
       "rename": {
         "docs/library-readme.md": "README.md"

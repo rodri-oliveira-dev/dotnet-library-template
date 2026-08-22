@@ -38,17 +38,67 @@ Most versioned files belong in generated libraries: source, tests, shared build/
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
 - `.template.config/**`;
+- `.github/workflows/initialize-repository.yml`;
 - `.github/workflows/template-validation.yml`;
 - `.github/workflows/sonar-template-validation.yml`;
 - `.github/workflows/versioning-validation.yml`;
 - `.github/workflows/release-publishing-validation.yml`;
+- `.github/workflows/github-template-initialization-validation.yml`;
 - `docs/template-development.md`;
 - `docs/repository-administration.md`;
+- `scripts/initialize-repository.sh`;
 - the template repository `README.md` and `README.en.md`.
 
 `docs/library-readme.md` is source content for generated projects. During generation it is renamed to `README.md`, so users of a generated library receive project-oriented documentation instead of maintenance instructions for the source template.
 
-The GitHub Template Repository feature performs a direct repository copy and does not evaluate `.template.config/template.json`. Therefore it does not perform `sourceName` replacement or template-engine exclusions. Users who need automatic renaming should prefer the `dotnet new` flow. A repository created with GitHub's `Use this template` button should follow the post-creation checklist in the root README.
+## GitHub Template Repository initializer
+
+GitHub's `Use this template` feature performs a direct repository copy and does not evaluate `.template.config/template.json`. The one-time initializer exists to make that copied repository converge to the same content a user would receive from:
+
+```bash
+dotnet new install .
+dotnet new rodri-lib -n MyCompany.MyLibrary
+```
+
+The initializer must call the real .NET template engine. Do not duplicate `sourceName`, `exclude`, `rename`, or `preferNameDirectory` behavior in shell, YAML, C#, or documentation examples. `.template.config/template.json` remains the single source of truth for generated content.
+
+Bootstrap-only files are:
+
+- `.github/workflows/initialize-repository.yml`;
+- `.github/workflows/github-template-initialization-validation.yml`;
+- `scripts/initialize-repository.sh`.
+
+They must stay excluded from direct `dotnet new` output. In a repository created with GitHub Template Repository, GitHub copies them initially, the user runs **Initialize repository**, and the replacement with canonical `dotnet new` output removes them from the final initialized repository.
+
+`scripts/initialize-repository.sh` owns the destructive filesystem operation. Its contract is:
+
+- validate the project name before generation;
+- reject empty names, whitespace-only names, path traversal, path separators, control characters, and invalid dotted .NET identifiers;
+- reject execution against `rodri-oliveira-dev/dotnet-library-template`;
+- reject GitHub Actions execution when the selected ref is not the repository default branch;
+- verify that the destination still looks like an uninitialized GitHub Template copy;
+- verify that the template source contains `.template.config/template.json`;
+- install and execute the current `rodri-lib` template into an isolated temporary directory;
+- validate the temporary output shape and absence of maintenance-only files before touching the destination;
+- replace the destination tree only after generation succeeds;
+- preserve `.git/**` and no other source-template-only state by default;
+- validate the final destination tree after replacement;
+- return a non-zero exit code for every rejected or ambiguous state.
+
+`.github/workflows/initialize-repository.yml` orchestrates the GitHub path. Its `GITHUB_TOKEN` permission is limited to `contents: read`, and the final push requires repository secret `INITIALIZE_REPOSITORY_TOKEN` with target-repository `Contents: write` and `Workflows: write`. That explicit token is necessary because a successful initialization removes workflow files, and GitHub rejects workflow-file changes from credentials without workflow-write permission. The workflow keeps checkout credentials from being persisted, fails before generation when the initialization token is missing, invokes the helper, runs locked restore, format verification, Release build, tests, pack, package verification, commits the generated changes, and pushes to the selected default branch. The workflow should fail with actionable output when the token, rulesets, or branch protection prevent that one-time push; it must not weaken repository security settings automatically.
+
+`.github/workflows/github-template-initialization-validation.yml` is the E2E parity test. It should:
+
+- create a simulated GitHub Template copy of the repository without `.git`;
+- generate a canonical project directly with `dotnet new rodri-lib -n Validation.SampleLibrary`;
+- run the same initializer helper against the simulated copy;
+- compare the initialized tree to the canonical direct output;
+- assert that maintenance/bootstrap-only files are absent;
+- assert that `Template.Library` does not leak into generated content;
+- cover invalid project names, source-repository execution, non-default-branch execution, missing template source, and failed generation before replacement;
+- initialize Git metadata for the output and validate restore, format, build, tests, pack, package verification, and Source Link.
+
+When maintainers change `template.json`, initializer logic, exclusions, rename rules, reusable workflows, or generated repository structure, they must keep this parity workflow updated. A passing direct `dotnet new` validation is not enough when the GitHub Template initializer behavior is affected.
 
 ## Adding or removing files
 
@@ -374,6 +424,8 @@ A valid generated project must not contain unintended matches.
 `.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, packaged assembly metadata, release helper propagation, and a negative mismatch case.
 
 `.github/workflows/release-publishing-validation.yml` is maintenance-only. It validates the release workflow contract and uses temporary Git repositories to exercise manual-request validation, rejection outside `main`, existing-tag collision, exact-SHA tag creation, tag/SHA mismatch rejection, the `NUGET_USER` decision matrix, and propagation of the reusable release flow into a generated library.
+
+`.github/workflows/github-template-initialization-validation.yml` is maintenance-only. It proves that a simulated GitHub Template Repository copy initialized through `scripts/initialize-repository.sh` is equivalent to direct `dotnet new` output, that bootstrap-only files self-remove, that invalid inputs and unsafe GitHub contexts fail before destructive replacement, and that the initialized output passes the generated-project restore, format, build, test, pack, and Source Link verification contract.
 
 Release changes must additionally confirm that:
 

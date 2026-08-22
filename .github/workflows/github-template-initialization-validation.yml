@@ -1,0 +1,266 @@
+name: GitHub Template initialization validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-template-initialization-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  initialization-parity:
+    name: Validate GitHub Template initialization parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate initializer contract
+        shell: bash
+        run: |
+          workflow='.github/workflows/initialize-repository.yml'
+          validation='.github/workflows/github-template-initialization-validation.yml'
+          helper='scripts/initialize-repository.sh'
+          template='.template.config/template.json'
+
+          test -s "$workflow"
+          test -s "$validation"
+          test -s "$helper"
+          test -s "$template"
+
+          grep -Fq 'workflow_dispatch:' "$workflow"
+          grep -Fq 'project_name:' "$workflow"
+          grep -Fq 'contents: read' "$workflow"
+          grep -Fq 'persist-credentials: false' "$workflow"
+          grep -Fq 'Validate initialization push token' "$workflow"
+          grep -Fq 'secrets.INITIALIZE_REPOSITORY_TOKEN' "$workflow"
+          grep -Fq 'Workflows: write' "$workflow"
+          grep -Fq 'run: bash scripts/initialize-repository.sh' "$workflow"
+          grep -Fq 'github.event.repository.default_branch' "$workflow"
+          grep -Fq 'dotnet restore --locked-mode' "$workflow"
+          grep -Fq 'dotnet format --verify-no-changes --no-restore' "$workflow"
+          grep -Fq 'dotnet build --configuration Release --no-restore' "$workflow"
+          grep -Fq 'dotnet test --configuration Release --no-build' "$workflow"
+          grep -Fq 'dotnet pack "$project"' "$workflow"
+          grep -Fq 'branch protection' "$workflow"
+
+          grep -Fq 'dotnet new install "$template_source"' "$helper"
+          grep -Fq 'dotnet new "$template_short_name" -n "$project_name" -o "$generated"' "$helper"
+          grep -Fq 'rodri-oliveira-dev/dotnet-library-template' "$helper"
+          grep -Fq 'Template.Library' "$helper"
+          grep -Fq 'find "$(basename "$root")" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +' "$helper"
+
+          grep -Fq '.github/workflows/initialize-repository.yml' "$template"
+          grep -Fq '.github/workflows/github-template-initialization-validation.yml' "$template"
+          grep -Fq 'scripts/initialize-repository.sh' "$template"
+
+      - name: Validate initializer safety guards
+        shell: bash
+        run: |
+          helper="$GITHUB_WORKSPACE/scripts/initialize-repository.sh"
+          root_base="$RUNNER_TEMP/initializer-guards"
+          mkdir -p "$root_base"
+
+          make_copy() {
+            local destination="$1"
+            rm -rf "$destination"
+            mkdir -p "$destination"
+            tar --exclude='./.git' --exclude='./artifacts' -cf - . | tar -xf - -C "$destination"
+            echo 'sentinel' > "$destination/sentinel.txt"
+          }
+
+          assert_rejected_without_mutation() {
+            local label="$1"
+            local project_name="$2"
+            local repository="$3"
+            local ref_name="$4"
+            local default_branch="$5"
+            local template_source="${6:-$GITHUB_WORKSPACE}"
+            local target="$root_base/$label"
+
+            make_copy "$target"
+
+            if INITIALIZE_REPOSITORY_REPOSITORY="$repository" \
+              INITIALIZE_REPOSITORY_REF_NAME="$ref_name" \
+              INITIALIZE_REPOSITORY_DEFAULT_BRANCH="$default_branch" \
+              bash "$helper" "$project_name" "$target" "$template_source"; then
+              echo "Initializer should have rejected scenario: $label"
+              exit 1
+            fi
+
+            test -f "$target/sentinel.txt"
+            test -f "$target/.template.config/template.json"
+            test -f "$target/scripts/initialize-repository.sh"
+          }
+
+          assert_rejected_without_mutation source-repository Validation.SampleLibrary rodri-oliveira-dev/dotnet-library-template main main
+          assert_rejected_without_mutation non-default-branch Validation.SampleLibrary example/generated-library feature main
+          assert_rejected_without_mutation empty-name '' example/generated-library main main
+          assert_rejected_without_mutation whitespace-name '   ' example/generated-library main main
+          assert_rejected_without_mutation traversal-name '../Validation.SampleLibrary' example/generated-library main main
+          assert_rejected_without_mutation slash-name 'Validation/SampleLibrary' example/generated-library main main
+          assert_rejected_without_mutation backslash-name 'Validation\SampleLibrary' example/generated-library main main
+          assert_rejected_without_mutation invalid-identifier 'Validation.Sample-Library' example/generated-library main main
+          assert_rejected_without_mutation missing-template Validation.SampleLibrary example/generated-library main main "$RUNNER_TEMP/missing-template-source"
+
+          invalid_destination="$root_base/invalid-destination"
+          mkdir -p "$invalid_destination"
+          echo 'sentinel' > "$invalid_destination/sentinel.txt"
+          if INITIALIZE_REPOSITORY_REPOSITORY=example/generated-library \
+            INITIALIZE_REPOSITORY_REF_NAME=main \
+            INITIALIZE_REPOSITORY_DEFAULT_BRANCH=main \
+            bash "$helper" Validation.SampleLibrary "$invalid_destination" "$GITHUB_WORKSPACE"; then
+            echo 'Initializer should have rejected a destination that is not an uninitialized template copy.'
+            exit 1
+          fi
+          test -f "$invalid_destination/sentinel.txt"
+
+      - name: Install template from checkout
+        run: dotnet new install .
+
+      - name: Generate canonical direct dotnet new output
+        shell: bash
+        run: |
+          canonical="$RUNNER_TEMP/canonical-output/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$canonical")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$canonical"
+          echo "CANONICAL_ROOT=$canonical" >> "$GITHUB_ENV"
+
+      - name: Simulate GitHub Template copy
+        shell: bash
+        run: |
+          copy="$RUNNER_TEMP/github-template-copy"
+          mkdir -p "$copy"
+          tar --exclude='./.git' --exclude='./artifacts' -cf - . | tar -xf - -C "$copy"
+          echo "GITHUB_TEMPLATE_COPY=$copy" >> "$GITHUB_ENV"
+
+      - name: Initialize simulated GitHub Template copy
+        env:
+          INITIALIZE_REPOSITORY_REPOSITORY: example/Validation.SampleLibrary
+          INITIALIZE_REPOSITORY_REF_NAME: main
+          INITIALIZE_REPOSITORY_DEFAULT_BRANCH: main
+        run: bash scripts/initialize-repository.sh Validation.SampleLibrary "$GITHUB_TEMPLATE_COPY" "$GITHUB_WORKSPACE"
+
+      - name: Compare initialized output with direct dotnet new output
+        shell: bash
+        run: |
+          diff -ruN "$CANONICAL_ROOT" "$GITHUB_TEMPLATE_COPY"
+
+      - name: Verify initialized output shape and exclusions
+        shell: bash
+        run: |
+          required=(
+            'Validation.SampleLibrary.slnx'
+            'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj'
+            'tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj'
+            'README.md'
+            'CHANGELOG.md'
+            '.github/workflows/ci.yml'
+            '.github/workflows/release.yml'
+            'scripts/verify-package.cs'
+          )
+          forbidden=(
+            '.template.config'
+            '.github/workflows/initialize-repository.yml'
+            '.github/workflows/template-validation.yml'
+            '.github/workflows/sonar-template-validation.yml'
+            '.github/workflows/versioning-validation.yml'
+            '.github/workflows/release-publishing-validation.yml'
+            '.github/workflows/github-template-initialization-validation.yml'
+            'docs/template-development.md'
+            'docs/repository-administration.md'
+            'docs/library-readme.md'
+            'README.en.md'
+            'scripts/initialize-repository.sh'
+          )
+
+          for path in "${required[@]}"; do
+            if [ ! -e "$GITHUB_TEMPLATE_COPY/$path" ]; then
+              echo "Missing expected generated path: $path"
+              exit 1
+            fi
+          done
+
+          for path in "${forbidden[@]}"; do
+            if [ -e "$GITHUB_TEMPLATE_COPY/$path" ]; then
+              echo "Maintenance/bootstrap-only path leaked after initialization: $path"
+              exit 1
+            fi
+          done
+
+          grep -Fq '# Validation.SampleLibrary' "$GITHUB_TEMPLATE_COPY/README.md"
+          grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GITHUB_TEMPLATE_COPY/.github/workflows/release.yml"
+
+          matches="$(grep -R -I -n -E 'Template\.Library' "$GITHUB_TEMPLATE_COPY" \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj \
+            --exclude-dir=artifacts || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Neutral identity leaked into initialized output:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Initialize Git context for package validation
+        shell: bash
+        run: |
+          git -C "$GITHUB_TEMPLATE_COPY" init -b main
+          git -C "$GITHUB_TEMPLATE_COPY" config user.name 'GitHub Template Initialization Validation'
+          git -C "$GITHUB_TEMPLATE_COPY" config user.email 'github-template-initialization@example.invalid'
+          git -C "$GITHUB_TEMPLATE_COPY" add --all
+          git -C "$GITHUB_TEMPLATE_COPY" commit -m 'Initial generated library'
+          git -C "$GITHUB_TEMPLATE_COPY" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restore local tools in initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet tool restore
+
+      - name: Restore dependencies in initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet restore --locked-mode
+
+      - name: Verify formatting in initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Pack initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: >-
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Verify package and Source Link in initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link --expected-version 1.0.0
+
+      - name: Uninstall template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true

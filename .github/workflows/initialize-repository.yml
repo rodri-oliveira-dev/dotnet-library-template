@@ -1,0 +1,113 @@
+name: Initialize repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: 'Library name, e.g. MyCompany.MyLibrary'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: initialize-repository-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  initialize:
+    name: Generate canonical library repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate initialization push token
+        env:
+          INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$INITIALIZE_REPOSITORY_TOKEN" ]; then
+            echo "::error::Configure repository secret INITIALIZE_REPOSITORY_TOKEN with Contents: write and Workflows: write before running this one-time initializer."
+            exit 1
+          fi
+
+      - name: Generate repository from template engine
+        env:
+          INITIALIZE_REPOSITORY_REPOSITORY: ${{ github.repository }}
+          INITIALIZE_REPOSITORY_REF_NAME: ${{ github.ref_name }}
+          INITIALIZE_REPOSITORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PROJECT_NAME: ${{ inputs.project_name }}
+        run: bash scripts/initialize-repository.sh "$PROJECT_NAME" "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE"
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Restore dependencies in locked mode
+        run: dotnet restore --locked-mode
+
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+      - name: Pack
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+        shell: bash
+        run: |
+          project="src/$PROJECT_NAME/$PROJECT_NAME.csproj"
+          if [ ! -f "$project" ]; then
+            echo "::error::Generated project not found: $project"
+            exit 1
+          fi
+
+          dotnet pack "$project" \
+            --configuration Release \
+            --no-build \
+            --output artifacts/packages
+
+      - name: Verify package
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --expected-version 1.0.0
+
+      - name: Commit initialized repository
+        env:
+          PROJECT_NAME: ${{ inputs.project_name }}
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add --all
+
+          if git diff --cached --quiet; then
+            echo "::error::Initialization produced no changes to commit."
+            exit 1
+          fi
+
+          git commit -m "Initialize $PROJECT_NAME"
+
+      - name: Push initialization commit
+        env:
+          INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
+        shell: bash
+        run: |
+          if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $INITIALIZE_REPOSITORY_TOKEN" \
+            push origin "HEAD:$GITHUB_REF_NAME"; then
+            echo "::error::Could not push the initialization commit. Confirm INITIALIZE_REPOSITORY_TOKEN has Contents: write and Workflows: write, and that repository rulesets or branch protection allow this one-time update."
+            exit 1
+          fi
