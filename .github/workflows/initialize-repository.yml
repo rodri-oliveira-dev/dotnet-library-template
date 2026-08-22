@@ -109,7 +109,9 @@ jobs:
           INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
         shell: bash
         run: |
-          if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $INITIALIZE_REPOSITORY_TOKEN" \
+          auth="$(printf 'x-access-token:%s' "$INITIALIZE_REPOSITORY_TOKEN" | base64 -w0)"
+
+          if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
             push origin "HEAD:$GITHUB_REF_NAME"; then
             echo "::error::Could not push the initialization commit. Confirm INITIALIZE_REPOSITORY_TOKEN has Contents: write and Workflows: write, and that repository rulesets or branch protection allow this one-time update."
             exit 1
