@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: initialize-repository-${{ github.repository }}
@@ -31,6 +31,16 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '10.0.x'
+
+      - name: Validate initialization push token
+        env:
+          INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$INITIALIZE_REPOSITORY_TOKEN" ]; then
+            echo "::error::Configure repository secret INITIALIZE_REPOSITORY_TOKEN with Contents: write and Workflows: write before running this one-time initializer."
+            exit 1
+          fi
 
       - name: Generate repository from template engine
         env:
@@ -93,11 +103,11 @@ jobs:
 
       - name: Push initialization commit
         env:
-          GH_TOKEN: ${{ github.token }}
+          INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
         shell: bash
         run: |
-          if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $GH_TOKEN" \
+          if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: bearer $INITIALIZE_REPOSITORY_TOKEN" \
             push origin "HEAD:$GITHUB_REF_NAME"; then
-            echo "::error::Could not push the initialization commit. Repository rulesets or branch protection may need to allow this one-time GitHub Actions update."
+            echo "::error::Could not push the initialization commit. Confirm INITIALIZE_REPOSITORY_TOKEN has Contents: write and Workflows: write, and that repository rulesets or branch protection allow this one-time update."
             exit 1
           fi

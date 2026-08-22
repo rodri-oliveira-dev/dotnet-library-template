@@ -191,8 +191,10 @@ Execute esse workflow antes de iniciar o desenvolvimento normal no novo reposit�
 ### Pré-requisitos e falhas esperadas
 
 - GitHub Actions precisa estar habilitado no novo repositório;
-- o workflow usa `contents: write` para commitar e enviar a inicialização;
-- rulesets ou branch protection da organização podem bloquear o push feito com `GITHUB_TOKEN`;
+- configure o Repository Secret `INITIALIZE_REPOSITORY_TOKEN` antes de executar o workflow;
+- esse token deve ser temporário e ter permissão mínima para o repositório de destino: `Contents: write` e `Workflows: write`;
+- remova ou revogue `INITIALIZE_REPOSITORY_TOKEN` depois da inicialização bem-sucedida;
+- rulesets ou branch protection da organização podem bloquear o push feito com `INITIALIZE_REPOSITORY_TOKEN`;
 - se validação, build, testes ou empacotamento falharem, o workflow não deve commitar nem enviar uma inicialização parcial;
 - se o push for bloqueado, ajuste as regras do repositório ou aplique um processo equivalente aprovado sem enfraquecer a segurança automaticamente.
 

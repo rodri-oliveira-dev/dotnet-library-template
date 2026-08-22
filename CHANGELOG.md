@@ -30,3 +30,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - NuGet.org publication is explicitly opt-in through the `NUGET_USER` repository variable; when it is absent, empty, or whitespace-only, the release still creates its tag and GitHub Release without starting OIDC authentication or `dotnet nuget push`.
 - GitHub Release creation is now independent from NuGet enablement; when NuGet publication is enabled, the GitHub Release still waits for a successful NuGet publication before it is created.
 - README quick-start guidance now shows the full clone/install/generate flow, optional `-o` output usage, unambiguous uninstall commands, and the automated GitHub Template initialization path in Portuguese and English.
+- GitHub Template initialization now uses a dedicated `INITIALIZE_REPOSITORY_TOKEN` secret with workflow-write permission for the self-removing push, while keeping the workflow `GITHUB_TOKEN` read-only.
