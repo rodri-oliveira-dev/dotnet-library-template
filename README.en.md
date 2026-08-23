@@ -198,6 +198,86 @@ Run this workflow before normal development starts in the new repository. It mus
 - if validation, build, tests, or packaging fail, the workflow should not commit or push a partial initialization;
 - if the push is blocked, adjust the repository rules or use an approved equivalent process without weakening security automatically.
 
+### How to create `INITIALIZE_REPOSITORY_TOKEN`
+
+`INITIALIZE_REPOSITORY_TOKEN` is a **Repository Secret** whose value should be a temporary **Fine-grained Personal Access Token (PAT)**. It is not copied when a new repository is created with **Use this template**, so it must be configured in the destination repository before the first workflow run.
+
+Create the token from a GitHub account with administrative access to the destination repository:
+
+1. open your GitHub avatar and go to **Settings**;
+2. open **Developer settings** → **Personal access tokens** → **Fine-grained tokens**;
+3. click **Generate new token**;
+4. use a temporary name such as `Initialize MyCompany.MyLibrary`;
+5. choose a short expiration, preferably only a few days;
+6. under **Resource owner**, select the user or organization that owns the new repository;
+7. under **Repository access**, choose **Only select repositories** and select only the repository that will be initialized;
+8. under **Repository permissions**, configure:
+   - **Contents** → **Read and write**;
+   - **Workflows** → **Read and write**;
+9. generate the token and copy the displayed value. GitHub may not show it again.
+
+Then, in the **destination repository**:
+
+1. go to **Settings** → **Secrets and variables** → **Actions**;
+2. on the **Secrets** tab, click **New repository secret**;
+3. use exactly this name:
+
+```text
+INITIALIZE_REPOSITORY_TOKEN
+```
+
+4. paste the Fine-grained PAT into **Secret**;
+5. save the secret;
+6. run **Actions** → **Initialize repository** → **Run workflow**.
+
+The token needs `Contents: write` because the initializer creates and replaces repository files, and `Workflows: write` because initialization also removes/replaces files under `.github/workflows`.
+
+After a successful initialization, delete repository secret `INITIALIZE_REPOSITORY_TOKEN` and revoke or delete the PAT under **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**. Do not reuse this token as a permanent CI credential and do not store it in version-controlled files.
+
+### Possible initialization errors
+
+#### `Configure repository secret INITIALIZE_REPOSITORY_TOKEN...`
+
+```text
+Configure repository secret INITIALIZE_REPOSITORY_TOKEN with Contents: write and Workflows: write before running this one-time initializer.
+```
+
+The workflow did not receive the secret. Confirm it was created under **Settings** → **Secrets and variables** → **Actions** in the **generated repository**, using the exact name `INITIALIZE_REPOSITORY_TOKEN`. Secrets from the source template repository are not copied into newly created repositories.
+
+#### `error IMPORTS: Fix imports ordering`
+
+```text
+error IMPORTS: Fix imports ordering.
+```
+
+This can occur in copies created from older template revisions because replacing `Template.Library` with the new library name can change the lexical ordering of `using` directives. The current initializer runs `dotnet format --no-restore` after generation and then `dotnet format --verify-no-changes --no-restore`, normalizing generated output before the formatting gate.
+
+If this error occurs in a repository created from an older revision, update `.github/workflows/initialize-repository.yml` to the current implementation or recreate the copy from the latest template revision. When the workflow itself has changed, prefer starting a **new workflow run** instead of re-running an attempt tied to the old workflow revision.
+
+#### `fatal: could not read Username for 'https://github.com'`
+
+```text
+fatal: could not read Username for 'https://github.com': No such device or address
+```
+
+This means `git push` could not authenticate. The current initializer uses HTTP Basic authentication with `x-access-token` and the value of `INITIALIZE_REPOSITORY_TOKEN`.
+
+If it still occurs:
+
+- confirm the PAT has not expired or been revoked;
+- confirm **Repository access** includes the destination repository;
+- confirm `Contents: Read and write` and `Workflows: Read and write`;
+- confirm the secret contains the complete PAT without extra whitespace;
+- if the repository copy contains an older initializer, update the workflow before running it again.
+
+#### Push rejected by a ruleset or branch protection
+
+The PAT may be valid while GitHub still rejects a push to the default branch. Review repository/organization rulesets and branch protection in that case. Temporarily authorize the actor/token for initialization or use an approved equivalent process. Do not permanently disable protections just to bypass the initializer.
+
+#### Format, build, test, pack, or package-validation failure
+
+The initializer validates generated output before pushing it. A failure in any of these steps stops execution and prevents a partial initialization from being pushed. Fix the cause reported by the first failed step and run the workflow again. The initialization commit should only be pushed after every preceding validation succeeds.
+
 ### Post-initialization checklist
 
 Before the first release of a library created from the GitHub Template:
