@@ -14,9 +14,9 @@ Ele:
 - restaura dependências NuGet em `--locked-mode`;
 - executa build Release não incremental dentro da análise Sonar;
 - executa os testes e gera cobertura OpenCover;
-- exclui `scripts/**` da análise Sonar;
+- mantém scripts de governança, release e administração disponíveis para análise do Sonar;
 - aguarda o Quality Gate e falha quando o gate reprova;
-- envia um `sonar.projectVersion` baseado no último release tag alcançável;
+- envia um `sonar.projectVersion` baseado no maior release tag alcançável segundo precedência SemVer;
 - usa o `PackageVersion` como fallback enquanto ainda não existir release tag.
 
 O CI principal continua sendo responsável pelo build normal do repositório, warnings como erros, validação do pacote e artefatos de CI. O SonarQube Cloud complementa essa baseline; ele não a substitui.
@@ -101,16 +101,19 @@ O workflow envia `sonar.projectVersion` explicitamente.
 
 A versão é resolvida nesta ordem:
 
-1. procura o release tag mais recente alcançável pelo `HEAD` no padrão `v*.*.*`, usando ordenação semântica;
-2. remove o prefixo `v` e usa essa versão como `sonar.projectVersion`;
-3. enquanto não houver release tag, usa o `PackageVersion` resolvido pelo MSBuild como fallback.
+1. enumera os Git tags alcançáveis pelo `HEAD` no padrão `v*.*.*`;
+2. compara os candidatos válidos usando precedência SemVer, inclusive identificadores de prerelease;
+3. remove o prefixo `v` da maior versão e usa o resultado como `sonar.projectVersion`;
+4. enquanto não houver release tag, usa o `PackageVersion` resolvido pelo MSBuild como fallback.
 
 Exemplo:
 
 ```text
-último tag alcançável: v1.4.0
-sonar.projectVersion: 1.4.0
+tags alcançáveis: v1.3.0-beta.1, v1.3.0
+sonar.projectVersion: 1.3.0
 ```
+
+Um release estável possui precedência SemVer maior que um prerelease com o mesmo major/minor/patch. Identificadores numéricos de prerelease também são comparados numericamente, portanto `beta.10` possui precedência maior que `beta.2`.
 
 Esse comportamento permite utilizar a estratégia **Previous Version** do SonarQube Cloud de forma coerente com o modelo de releases do repositório. Depois que um novo release tag é criado, a próxima análise de `main` passa a enxergar a nova versão e avança a baseline.
 
@@ -125,7 +128,7 @@ sonar.qualitygate.wait=true
 sonar.qualitygate.timeout=300
 ```
 
-Portanto, se o Quality Gate reprovar, o job do Sonar no GitHub Actions também reprova, tanto em pull requests quanto em pushes para `main`.
+Quando o scanner realmente é executado, se o Quality Gate reprovar, o job do Sonar no GitHub Actions também reprova, tanto em pull requests quanto em pushes para `main`.
 
 O gate padrão **Sonar way** é uma boa baseline inicial. Um Quality Gate customizado pode ser usado quando houver uma política explícita de qualidade, mas não reduza thresholds apenas para deixar o CI verde.
 
@@ -150,23 +153,11 @@ Isso é independente do artefato Cobertura produzido pelo workflow principal de 
 
 Não exclua código de produção da cobertura apenas para elevar o percentual exibido.
 
-## 8. Exclusões da análise
+## 8. Escopo da análise
 
-A baseline exclui deliberadamente:
+A baseline **não exclui `scripts/**` da análise Sonar**. Helpers como validação do pacote, guards de release, manipulação de tags e inicialização de repositórios gerados fazem parte da governança técnica do projeto e devem continuar visíveis para análises de confiabilidade, segurança e text/secrets quando suportadas pelo Sonar.
 
-```text
-scripts/**
-```
-
-através de:
-
-```text
-sonar.exclusions=scripts/**
-```
-
-Os helpers e scripts de release continuam sendo validados pelos próprios fluxos de CI/release, mas ficam fora da análise principal do projeto no Sonar.
-
-Adicione novas exclusões somente quando os arquivos estiverem claramente fora do escopo de análise do produto. Evite exclusões amplas como `src/**`, validators ou código de domínio.
+Se algum arquivo futuro não deva contribuir para cobertura, prefira a exclusão de cobertura mais específica possível em vez de removê-lo de toda a análise. Não adicione padrões amplos de `sonar.exclusions` apenas para melhorar métricas.
 
 ## 9. Histórico Git completo
 
@@ -180,7 +171,7 @@ Não transforme esse checkout em shallow sem também redesenhar a estratégia de
 
 ## 10. Branch protection / ruleset
 
-Depois que a integração estiver estável, inclua o job do Sonar entre os checks obrigatórios de `main` se essa for a política de governança do repositório.
+Depois que a integração estiver estável, o job do Sonar pode ser incluído entre os checks obrigatórios de `main` **somente quando o modelo de contribuição do repositório garantir que o scanner realmente será executado nos pull requests que estiverem sendo bloqueados**.
 
 O nome atual do job é:
 
@@ -189,6 +180,14 @@ Analisar com SonarQube Cloud
 ```
 
 Confirme o nome exato emitido pelo GitHub em um pull request recente antes de adicioná-lo ao ruleset.
+
+### Pull requests vindos de forks
+
+O GitHub não disponibiliza Repository Secrets como `SONAR_TOKEN` para workflows disparados por pull requests vindos de forks. Com o modelo opt-in seguro deste template, um PR de fork executa o caminho de Sonar desabilitado e o job termina com sucesso sem executar scanner ou Quality Gate.
+
+Não interprete esse check verde como evidência de que o Sonar analisou a contribuição do fork e não use esse job do Sonar como único gate obrigatório para PRs não confiáveis. CI, CodeQL, Dependency Review e revisão normal continuam sendo gates independentes importantes.
+
+Se um projeto realmente precisar analisar contribuições de forks com Sonar, desenhe um fluxo confiável separado. **Não** troque ingenuamente para `pull_request_target` e depois faça checkout ou execute código não confiável do fork com acesso a Repository Secrets, pois isso pode expor credenciais.
 
 ## Repositórios gerados
 
@@ -201,6 +200,8 @@ Cada novo repositório precisa configurar seu próprio projeto no Sonar e seu pr
 ### O workflow informa que SonarQube Cloud está desabilitado
 
 Confirme que `SONAR_TOKEN` existe em **Settings → Secrets and variables → Actions → Secrets** e está disponível para o evento do workflow.
+
+Em pull requests vindos de forks, o token fica indisponível intencionalmente. O workflow emite um warning e ignora a análise Sonar em vez de expor um Repository Secret a código não confiável.
 
 ### `SONAR_PROJECT_KEY` ou organization não pode ser resolvido
 
@@ -222,13 +223,13 @@ Confirme que o passo de testes gerou um arquivo OpenCover e procure no log do So
 
 ### A versão do projeto nunca avança
 
-Confirme que os releases geram Git tags no padrão:
+Confirme que os releases geram Git tags SemVer válidos no padrão:
 
 ```text
 v*.*.*
 ```
 
-e que esses tags são alcançáveis a partir de `main`. Preserve `fetch-depth: 0` no checkout.
+e que esses tags são alcançáveis a partir de `main`. Preserve `fetch-depth: 0` no checkout. O resolver compara releases estáveis e prereleases pela precedência SemVer, sem depender da ordenação padrão de versões do Git.
 
 ## Segurança
 
@@ -236,4 +237,5 @@ e que esses tags são alcançáveis a partir de `main`. Preserve `fetch-depth: 0
 - não imprima tokens em diagnósticos do workflow;
 - use Repository Variables para coordenadas não secretas;
 - não adicione credenciais persistentes ao código-fonte;
+- não execute código não confiável de forks em workflows privilegiados com acesso a Repository Secrets;
 - mantenha as permissões do workflow somente leitura enquanto nenhuma funcionalidade do Sonar exigir permissões adicionais de forma documentada.
