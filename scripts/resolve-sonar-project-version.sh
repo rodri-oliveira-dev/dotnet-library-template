@@ -5,6 +5,29 @@ export LC_ALL=C
 fallback_version="${FALLBACK_VERSION:-}"
 semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
+numeric_greater_than() {
+  local left="$1"
+  local right="$2"
+
+  while [[ "${#left}" -gt 1 && "${left:0:1}" == '0' ]]; do
+    left="${left:1}"
+  done
+
+  while [[ "${#right}" -gt 1 && "${right:0:1}" == '0' ]]; do
+    right="${right:1}"
+  done
+
+  if [[ "${#left}" -gt "${#right}" ]]; then
+    return 0
+  fi
+
+  if [[ "${#left}" -lt "${#right}" ]]; then
+    return 1
+  fi
+
+  [[ "$left" > "$right" ]]
+}
+
 semver_greater_than() {
   local left="${1#v}"
   local right="${2#v}"
@@ -31,11 +54,11 @@ semver_greater_than() {
   local index
 
   for index in 0 1 2; do
-    if (( 10#${left_parts[$index]} > 10#${right_parts[$index]} )); then
+    if numeric_greater_than "${left_parts[$index]}" "${right_parts[$index]}"; then
       return 0
     fi
 
-    if (( 10#${left_parts[$index]} < 10#${right_parts[$index]} )); then
+    if numeric_greater_than "${right_parts[$index]}" "${left_parts[$index]}"; then
       return 1
     fi
   done
@@ -57,16 +80,16 @@ semver_greater_than() {
   IFS='.' read -r -a right_identifiers <<< "$right_pre"
 
   local max_length="${#left_identifiers[@]}"
-  if (( ${#right_identifiers[@]} > max_length )); then
+  if [[ "${#right_identifiers[@]}" -gt "$max_length" ]]; then
     max_length="${#right_identifiers[@]}"
   fi
 
   for ((index = 0; index < max_length; index++)); do
-    if (( index >= ${#left_identifiers[@]} )); then
+    if [[ "$index" -ge "${#left_identifiers[@]}" ]]; then
       return 1
     fi
 
-    if (( index >= ${#right_identifiers[@]} )); then
+    if [[ "$index" -ge "${#right_identifiers[@]}" ]]; then
       return 0
     fi
 
@@ -83,7 +106,7 @@ semver_greater_than() {
     [[ "$right_identifier" =~ ^[0-9]+$ ]] && right_numeric=true
 
     if [[ "$left_numeric" == true && "$right_numeric" == true ]]; then
-      if (( 10#$left_identifier > 10#$right_identifier )); then
+      if numeric_greater_than "$left_identifier" "$right_identifier"; then
         return 0
       fi
       return 1
