@@ -74,6 +74,33 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         run: dotnet restore Template.Library.slnx --locked-mode
 
+      - name: Resolver versão do projeto para Sonar
+        if: ${{ env.SONAR_TOKEN != '' }}
+        shell: bash
+        run: |
+          project="src/Template.Library/Template.Library.csproj"
+          fallback_version="$(dotnet msbuild "$project" -nologo -getProperty:PackageVersion \
+            | tr -d '\r' \
+            | sed '/^[[:space:]]*$/d' \
+            | tail -n 1)"
+          release_tag="$(git tag --merged HEAD --list 'v*.*.*' --sort=-version:refname | head -n 1)"
+
+          if [ -n "$release_tag" ]; then
+            version="${release_tag#v}"
+            version_source="release tag $release_tag"
+          else
+            version="$fallback_version"
+            version_source="PackageVersion fallback"
+          fi
+
+          if [ -z "$version" ]; then
+            echo "Versão não pôde ser resolvida para a análise Sonar."
+            exit 1
+          fi
+
+          echo "Sonar project version: $version ($version_source)"
+          echo "SONAR_PROJECT_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Iniciar análise Sonar
         if: ${{ env.SONAR_TOKEN != '' }}
         shell: bash
@@ -81,9 +108,13 @@ jobs:
           dotnet sonarscanner begin
           /k:"$SONAR_PROJECT_KEY"
           /o:"$SONAR_ORGANIZATION"
+          /v:"$SONAR_PROJECT_VERSION"
           /d:sonar.host.url="$SONAR_HOST_URL"
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"
+          /d:sonar.exclusions="scripts/**"
+          /d:sonar.qualitygate.wait=true
+          /d:sonar.qualitygate.timeout=300
 
       - name: Compilar para análise
         if: ${{ env.SONAR_TOKEN != '' }}
