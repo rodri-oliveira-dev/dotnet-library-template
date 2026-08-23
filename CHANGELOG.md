@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Portable VS Code recommendations, workspace settings, and tasks for restore, build, test, coverage, and NuGet packaging.
 - Maintenance-only GitHub repository administration baseline covering template status, Actions permissions, `main` ruleset checks, security features, and final v1.0 verification.
 - Optional SonarQube Cloud analysis using a locally pinned SonarScanner for .NET, repository-secret opt-in, configurable repository coordinates, and Coverlet/OpenCover coverage import.
-- Bilingual SonarQube Cloud setup and troubleshooting guides covering GitHub secrets/variables, Automatic Analysis, New Code/version baselines, Quality Gate enforcement, coverage, exclusions, and generated-repository setup.
+- Bilingual SonarQube Cloud setup and troubleshooting guides covering GitHub secrets/variables, Automatic Analysis, New Code/version baselines, Quality Gate enforcement, coverage, fork limitations, and generated-repository setup.
 - Centralized SemVer versioning with base version `1.0.0`, tag-driven release overrides, packaged assembly metadata validation, and E2E stable/prerelease/mismatch checks.
 - Maintenance-only release-publishing validation covering manual release request validation, tag/SHA guarantees, the `NUGET_USER` opt-in decision matrix, and generated-template behavior.
 - Reproducible .NET SDK selection through `global.json`, SDK analyzer baseline validation, native SDK Package Validation, packaged README metadata, and a generated `SECURITY.md` policy.
@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- SonarQube Cloud now reports the latest reachable SemVer release tag as `sonar.projectVersion` (falling back to `PackageVersion` before the first release), excludes `scripts/**`, and blocks both pull requests and `main` pushes when the Quality Gate fails.
+- SonarQube Cloud now reports the highest reachable release tag by SemVer precedence as `sonar.projectVersion` (falling back to `PackageVersion` before the first release), keeps governance/release scripts in analysis, and blocks both pull requests and `main` pushes when the Quality Gate is actually evaluated.
 - Hardened GitHub Actions permissions to job scope where applicable and pinned `NuGet/login` to the immutable v1.2.0 commit SHA used by the release workflow.
 - Hardened all eligible GitHub Actions references with immutable commit SHAs and disabled credential persistence on read-only checkouts.
 - Extended `.editorconfig` with production-scoped reliability/API-usage rules and low-noise performance rules while keeping `CA1859` as a suggestion.
