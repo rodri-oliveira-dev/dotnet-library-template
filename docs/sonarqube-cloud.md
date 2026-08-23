@@ -14,9 +14,9 @@ It:
 - restores NuGet dependencies in locked mode;
 - performs a non-incremental Release build under Sonar analysis;
 - runs the test suite and produces OpenCover coverage for Sonar;
-- excludes `scripts/**` from Sonar analysis;
+- keeps repository and release-governance scripts available to Sonar analysis;
 - waits for the Sonar Quality Gate and fails the workflow when the gate fails;
-- reports a `sonar.projectVersion` that follows the latest reachable release tag;
+- reports a `sonar.projectVersion` that follows the highest reachable release tag by SemVer precedence;
 - falls back to the project's `PackageVersion` before the first release tag exists.
 
 The primary CI workflow remains responsible for the repository's normal build, warnings-as-errors policy, package validation, and CI artifacts. SonarQube Cloud complements that baseline instead of replacing it.
@@ -101,16 +101,19 @@ The workflow explicitly sends `sonar.projectVersion`.
 
 Its version resolution is:
 
-1. find the newest reachable Git tag matching `v*.*.*`, using semantic version ordering;
-2. remove the leading `v` and use that release as `sonar.projectVersion`;
-3. before the first release tag exists, use the MSBuild `PackageVersion` as a fallback.
+1. enumerate reachable Git tags matching `v*.*.*`;
+2. compare valid candidates using SemVer precedence, including prerelease identifiers;
+3. remove the leading `v` from the highest version and use it as `sonar.projectVersion`;
+4. before the first release tag exists, use the MSBuild `PackageVersion` as a fallback.
 
 Example:
 
 ```text
-latest reachable tag: v1.4.0
-sonar.projectVersion: 1.4.0
+reachable tags: v1.3.0-beta.1, v1.3.0
+sonar.projectVersion: 1.3.0
 ```
+
+A stable release has higher SemVer precedence than a prerelease with the same major/minor/patch version. Numeric prerelease identifiers are also compared numerically, so `beta.10` has higher precedence than `beta.2`.
 
 This makes SonarQube Cloud's **Previous Version** New Code strategy usable with the repository's release model. After a release tag is created, the next analysis on `main` sees the new tag and advances the version baseline.
 
@@ -125,7 +128,7 @@ sonar.qualitygate.wait=true
 sonar.qualitygate.timeout=300
 ```
 
-Therefore a failed Quality Gate fails the Sonar GitHub Actions job on both pull requests and pushes to `main`.
+When the scanner actually runs, a failed Quality Gate fails the Sonar GitHub Actions job on both pull requests and pushes to `main`.
 
 The built-in **Sonar way** gate is a reasonable starting point. A custom gate can be used when the project has an explicit quality policy, but do not weaken thresholds merely to make CI green.
 
@@ -150,23 +153,11 @@ This is independent from the Cobertura coverage artifact produced by the main CI
 
 Production code should not be excluded from coverage solely to increase the reported percentage.
 
-## 8. Analysis exclusions
+## 8. Analysis scope
 
-The baseline intentionally excludes:
+The baseline does **not** exclude `scripts/**` from Sonar analysis. Repository helpers such as package verification, release guards, tag handling, and generated-repository initialization are engineering-critical code and should remain visible to reliability, security, and text/secrets analysis where supported by Sonar.
 
-```text
-scripts/**
-```
-
-through:
-
-```text
-sonar.exclusions=scripts/**
-```
-
-The repository's helper and release scripts remain validated by their own CI/release flows but are not part of the Sonar project analysis baseline.
-
-Add more exclusions only when files are demonstrably outside the product analysis scope. Avoid broad exclusions such as `src/**`, validators, or domain code.
+If a future file should not contribute to coverage, prefer the narrowest applicable coverage exclusion instead of removing it from the whole analysis. Do not add broad `sonar.exclusions` patterns merely to improve metrics.
 
 ## 9. Git history requirement
 
@@ -180,7 +171,7 @@ Do not replace it with a shallow checkout unless the version-resolution strategy
 
 ## 10. Recommended GitHub branch protection
 
-After the integration is stable, include the Sonar job among the required checks for `main` when your repository governance requires it.
+After the integration is stable, the Sonar job can be included among the required checks for `main` **only when the repository's contribution model guarantees that the scanner runs for the pull requests being gated**.
 
 The current job name is:
 
@@ -189,6 +180,14 @@ Analisar com SonarQube Cloud
 ```
 
 Verify the exact emitted check name on a recent pull request before adding it to a ruleset.
+
+### Fork pull requests
+
+GitHub does not expose repository secrets such as `SONAR_TOKEN` to workflows triggered by pull requests from forks. With this template's secure opt-in model, a fork PR therefore executes the disabled Sonar path and the job succeeds without running the scanner or Quality Gate.
+
+Do not describe that successful check as proof that Sonar evaluated the fork contribution, and do not rely on this Sonar job as the only required quality gate for untrusted fork PRs. CI, CodeQL, Dependency Review, and the normal review process remain important independent gates.
+
+If a project requires Sonar analysis for fork contributions, design a separate trusted workflow deliberately. Do **not** switch naively to `pull_request_target` and then check out or execute untrusted fork code with repository secrets, because that can expose credentials.
 
 ## Generated repositories
 
@@ -201,6 +200,8 @@ Every generated repository must configure its own Sonar project and `SONAR_TOKEN
 ### The workflow says SonarQube Cloud is disabled
 
 Confirm `SONAR_TOKEN` exists under **Settings → Secrets and variables → Actions → Secrets** and is available to the workflow event.
+
+For a pull request from a fork, the token is intentionally unavailable. The workflow emits a warning and skips the Sonar analysis rather than exposing a repository secret to untrusted code.
 
 ### `SONAR_PROJECT_KEY` or organization cannot be resolved
 
@@ -222,13 +223,13 @@ Confirm the test step generated an OpenCover file and look for the Sonar log ent
 
 ### Project version never advances
 
-Confirm releases create Git tags matching:
+Confirm releases create valid SemVer Git tags matching:
 
 ```text
 v*.*.*
 ```
 
-and that the tags are reachable from `main`. Keep `fetch-depth: 0` on the checkout.
+and that the tags are reachable from `main`. Keep `fetch-depth: 0` on the checkout. The resolver compares stable and prerelease versions using SemVer precedence rather than Git's default version sort.
 
 ## Security notes
 
@@ -236,4 +237,5 @@ and that the tags are reachable from `main`. Keep `fetch-depth: 0` on the checko
 - do not print token values in workflow diagnostics;
 - prefer repository variables for non-secret coordinates;
 - do not add long-lived credentials to source files;
+- do not execute untrusted fork code in a privileged workflow that has access to repository secrets;
 - keep the workflow's repository permissions read-only unless a future Sonar feature has a documented need for additional access.
