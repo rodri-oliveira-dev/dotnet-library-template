@@ -28,7 +28,13 @@ jobs:
     steps:
       - name: SonarQube Cloud desabilitado
         if: ${{ env.SONAR_TOKEN == '' }}
-        run: echo "SONAR_TOKEN não configurado; análise SonarQube Cloud ignorada."
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            echo "::warning::SONAR_TOKEN não é disponibilizado para pull requests vindos de forks; o Quality Gate do Sonar não foi executado."
+          else
+            echo "SONAR_TOKEN não configurado; análise SonarQube Cloud ignorada."
+          fi
 
       - name: Checkout
         if: ${{ env.SONAR_TOKEN != '' }}
@@ -74,6 +80,28 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         run: dotnet restore Template.Library.slnx --locked-mode
 
+      - name: Resolver versão do projeto para Sonar
+        if: ${{ env.SONAR_TOKEN != '' }}
+        shell: bash
+        run: |
+          project="src/Template.Library/Template.Library.csproj"
+          fallback_version="$(dotnet msbuild "$project" -nologo -getProperty:PackageVersion \
+            | tr -d '\r' \
+            | sed '/^[[:space:]]*$/d' \
+            | tail -n 1)"
+
+          resolution="$(FALLBACK_VERSION="$fallback_version" bash scripts/resolve-sonar-project-version.sh)"
+          version="$(sed -n 's/^version=//p' <<< "$resolution")"
+          version_source="$(sed -n 's/^source=//p' <<< "$resolution")"
+
+          if [ -z "$version" ]; then
+            echo "Versão não pôde ser resolvida para a análise Sonar."
+            exit 1
+          fi
+
+          echo "Sonar project version: $version ($version_source)"
+          echo "SONAR_PROJECT_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Iniciar análise Sonar
         if: ${{ env.SONAR_TOKEN != '' }}
         shell: bash
@@ -81,9 +109,12 @@ jobs:
           dotnet sonarscanner begin
           /k:"$SONAR_PROJECT_KEY"
           /o:"$SONAR_ORGANIZATION"
+          /v:"$SONAR_PROJECT_VERSION"
           /d:sonar.host.url="$SONAR_HOST_URL"
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"
+          /d:sonar.qualitygate.wait=true
+          /d:sonar.qualitygate.timeout=300
 
       - name: Compilar para análise
         if: ${{ env.SONAR_TOKEN != '' }}

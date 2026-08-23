@@ -153,17 +153,37 @@ SONAR_ORGANIZATION
 SONAR_HOST_URL
 ```
 
-Typical setup:
+### Required SonarQube Cloud setup
 
-1. Create or import the repository project in SonarQube Cloud.
-2. Add repository secret `SONAR_TOKEN` with a token authorized to analyze that project.
-3. If the derived coordinates do not match the Sonar project, add `SONAR_PROJECT_KEY` and/or `SONAR_ORGANIZATION` repository variables.
-4. Optionally set `SONAR_HOST_URL`; otherwise `https://sonarcloud.io` is used.
-5. Open a pull request or push to `main` and confirm the analysis appears in SonarQube Cloud.
+Use this baseline when enabling the integration:
 
-The workflow uses the locally pinned SonarScanner for .NET, locked restore, a non-incremental Release build, tests, and Coverlet MTP output in OpenCover format. The OpenCover report is imported through `sonar.cs.opencover.reportsPaths`; this does not replace the Cobertura artifact produced by the primary CI workflow.
+1. Create or import the repository project in SonarQube Cloud and bind it to the GitHub repository.
+2. Disable **Automatic Analysis** for that Sonar project; this repository uses CI-based analysis so the scanner can import .NET coverage and enforce the same build contract as GitHub Actions.
+3. Add repository secret `SONAR_TOKEN` with a token authorized to analyze that project.
+4. If the derived coordinates do not match the Sonar project, configure `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION`, and optionally `SONAR_HOST_URL` under **Settings → Secrets and variables → Actions → Variables**.
+5. Configure Sonar **New Code** to use **Previous Version** when you want release-based baselines. The workflow sends `sonar.projectVersion` from the highest reachable release tag using SemVer precedence and falls back to MSBuild `PackageVersion` before the first release.
+6. Use **Sonar way** or an intentional custom Quality Gate. The workflow uses `sonar.qualitygate.wait=true` with a 300-second timeout, so an evaluated failed gate fails the GitHub Actions job on pull requests and pushes to `main`.
+7. Open a pull request and confirm the Sonar analysis, OpenCover import, and Quality Gate result appear in SonarQube Cloud before making the Sonar check required in branch protection.
 
-Repository secrets and Repository Variables are administrative settings and are not inherited when another repository is created from this template. A generated repository therefore remains fully usable without Sonar until `SONAR_TOKEN` is configured.
+The workflow uses the locally pinned SonarScanner for .NET, locked restore, a non-incremental Release build, tests, and Coverlet MTP output in OpenCover format. The OpenCover report is imported through:
+
+```text
+sonar.cs.opencover.reportsPaths=**/coverage.opencover*.xml
+```
+
+This does not replace the Cobertura artifact produced by the primary CI workflow.
+
+The workflow intentionally keeps repository and release-governance scripts under `scripts/**` in Sonar analysis. Do not add a broad `sonar.exclusions=scripts/**` rule merely to affect metrics; use a narrow coverage exclusion only when a specific file should genuinely not contribute to coverage.
+
+### Fork pull requests
+
+GitHub does not expose repository secrets such as `SONAR_TOKEN` to workflows triggered by pull requests from forks. In that scenario the Sonar workflow emits a warning and completes the disabled path without running the scanner or Quality Gate.
+
+A green Sonar check on a fork pull request therefore does **not** prove that Sonar evaluated the contribution. Do not use that check as the only required quality gate for untrusted fork contributions, and do not naively switch to `pull_request_target` while checking out or executing untrusted fork code with repository secrets.
+
+Repository secrets, Repository Variables, Sonar projects, Quality Gates, and branch-protection settings are administrative settings and are not inherited when another repository is created from this template. A generated repository therefore remains fully usable without Sonar until `SONAR_TOKEN` is configured.
+
+For the complete configuration and troubleshooting reference, see [docs/sonarqube-cloud.md](docs/sonarqube-cloud.md). A Portuguese version is available at [docs/sonarqube-cloud.pt-BR.md](docs/sonarqube-cloud.pt-BR.md).
 
 ## Release and NuGet publishing
 

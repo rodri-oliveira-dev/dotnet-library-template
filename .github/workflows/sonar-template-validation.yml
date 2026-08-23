@@ -51,9 +51,11 @@ jobs:
         run: |
           workflow='.github/workflows/sonar.yml'
           manifest='.config/dotnet-tools.json'
+          resolver='scripts/resolve-sonar-project-version.sh'
 
           test -s "$workflow"
           test -s "$manifest"
+          test -s "$resolver"
 
           grep -Fq '"dotnet-sonarscanner"' "$manifest"
           grep -Fq '"version": "11.2.1"' "$manifest"
@@ -71,18 +73,69 @@ jobs:
           grep -Fq 'fetch-depth: 0' "$workflow"
           grep -Fq 'env.SONAR_TOKEN == ' "$workflow"
           grep -Fq 'env.SONAR_TOKEN != ' "$workflow"
+          grep -Fq 'github.event.pull_request.head.repo.fork' "$workflow"
           grep -Fq 'dotnet tool restore' "$workflow"
           grep -Fq 'dotnet restore Template.Library.slnx --locked-mode' "$workflow"
+          grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
           grep -Fq 'dotnet sonarscanner begin' "$workflow"
           grep -Fq '/d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"' "$workflow"
+          grep -Fq '/d:sonar.qualitygate.wait=true' "$workflow"
           grep -Fq 'dotnet build Template.Library.slnx --configuration Release --no-restore --no-incremental' "$workflow"
           grep -Fq -- '--coverlet-output-format opencover' "$workflow"
           grep -Fq 'dotnet sonarscanner end' "$workflow"
+
+          if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
+            echo "scripts/** não deve ser removido da análise Sonar."
+            exit 1
+          fi
 
           if grep -Eq 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$workflow"; then
             echo "Workflow Sonar contém identidade específica do source repository."
             exit 1
           fi
+
+      - name: Validar precedência SemVer do resolver Sonar
+        shell: bash
+        run: |
+          resolver="$GITHUB_WORKSPACE/scripts/resolve-sonar-project-version.sh"
+          sandbox="$RUNNER_TEMP/sonar-version-resolution"
+          rm -rf "$sandbox"
+          mkdir -p "$sandbox"
+          cd "$sandbox"
+
+          git init --quiet
+          git config user.name 'Template Validation'
+          git config user.email 'template-validation@example.invalid'
+          touch marker
+          git add marker
+          git commit --quiet -m 'validation fixture'
+
+          for tag in \
+            v1.2.9 \
+            v1.3.0-alpha \
+            v1.3.0-beta.1 \
+            v1.3.0-beta.2 \
+            v1.3.0-beta.10 \
+            v1.3.0-rc.1 \
+            v1.3.0; do
+            git tag "$tag"
+          done
+
+          resolution="$(FALLBACK_VERSION=0.9.0 bash "$resolver")"
+          grep -Fxq 'version=1.3.0' <<< "$resolution"
+          grep -Fxq 'source=release tag v1.3.0' <<< "$resolution"
+
+          git tag -d v1.3.0 >/dev/null
+          resolution="$(FALLBACK_VERSION=0.9.0 bash "$resolver")"
+          grep -Fxq 'version=1.3.0-rc.1' <<< "$resolution"
+
+          for tag in $(git tag); do
+            git tag -d "$tag" >/dev/null
+          done
+
+          resolution="$(FALLBACK_VERSION=0.9.0 bash "$resolver")"
+          grep -Fxq 'version=0.9.0' <<< "$resolution"
+          grep -Fxq 'source=PackageVersion fallback' <<< "$resolution"
 
       - name: Restaurar ferramentas locais
         run: dotnet tool restore
@@ -111,10 +164,12 @@ jobs:
         run: |
           workflow="$GENERATED_ROOT/.github/workflows/sonar.yml"
           manifest="$GENERATED_ROOT/.config/dotnet-tools.json"
+          resolver="$GENERATED_ROOT/scripts/resolve-sonar-project-version.sh"
           readme="$GENERATED_ROOT/README.md"
 
           test -s "$workflow"
           test -s "$manifest"
+          test -s "$resolver"
           test -s "$readme"
           test ! -e "$GENERATED_ROOT/.github/workflows/sonar-template-validation.yml"
 
@@ -126,7 +181,13 @@ jobs:
           grep -Fq 'vars.SONAR_PROJECT_KEY' "$workflow"
           grep -Fq 'vars.SONAR_ORGANIZATION' "$workflow"
           grep -Fq 'vars.SONAR_HOST_URL' "$workflow"
+          grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
           grep -Fq 'Optional SonarQube Cloud analysis' "$readme"
+
+          if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
+            echo "Saída gerada exclui scripts/** indevidamente da análise Sonar."
+            exit 1
+          fi
 
           if grep -R -I -n -E 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$GENERATED_ROOT" \
             --exclude-dir=.git --exclude-dir=bin --exclude-dir=obj --exclude-dir=artifacts; then

@@ -286,7 +286,7 @@ Antes do primeiro release de uma biblioteca criada pelo GitHub Template:
 - revise a versão base em `Directory.Build.props`;
 - revise README, licença e metadados públicos;
 - se quiser publicar no NuGet.org, configure Trusted Publishing para `.github/workflows/release.yml` e a Repository Variable `NUGET_USER`;
-- configure `SONAR_TOKEN` se quiser habilitar SonarQube Cloud;
+- [configure o SonarQube Cloud](#sonarqube-cloud-opcional) se quiser habilitar a análise;
 - configure ruleset ou branch protection para `main`;
 - revise as permissões padrão do GitHub Actions;
 - habilite e valide os recursos de segurança apropriados do GitHub;
@@ -425,7 +425,17 @@ Separar esses fluxos torna falhas de build, segurança, análise externa, geraç
 
 ## SonarQube Cloud opcional
 
-A análise do Sonar é opt-in. Configure o repository secret:
+A análise do Sonar é opt-in e o workflow está em `.github/workflows/sonar.yml`. Para habilitar corretamente:
+
+1. crie ou importe o projeto no SonarQube Cloud e associe-o ao repositório GitHub;
+2. no projeto Sonar, mantenha **Automatic Analysis desabilitado**, porque esta baseline usa análise CI-based para executar o build .NET e importar cobertura;
+3. configure o Repository Secret `SONAR_TOKEN` com um token autorizado a analisar o projeto;
+4. configure `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION` e `SONAR_HOST_URL` como Repository Variables somente quando os valores derivados automaticamente não corresponderem às coordenadas do projeto Sonar;
+5. para uma baseline por release, configure **New Code → Previous Version**; o workflow envia `sonar.projectVersion` com o maior release tag alcançável segundo precedência SemVer e usa `PackageVersion` antes do primeiro release;
+6. use **Sonar way** ou um Quality Gate customizado intencional. O workflow usa `sonar.qualitygate.wait=true` e timeout de 300 segundos, portanto um gate avaliado como reprovado falha o job em PRs e pushes para `main`;
+7. valide pelo menos um PR antes de tornar o check Sonar obrigatório no ruleset de `main`.
+
+O secret obrigatório é:
 
 ```text
 SONAR_TOKEN
@@ -448,6 +458,12 @@ SONAR_PROJECT_KEY
 SONAR_ORGANIZATION
 SONAR_HOST_URL
 ```
+
+A cobertura enviada ao Sonar é gerada em OpenCover e importada por `sonar.cs.opencover.reportsPaths`. Os scripts de governança e release em `scripts/**` permanecem deliberadamente dentro da análise Sonar; não use `sonar.exclusions=scripts/**` apenas para alterar métricas.
+
+**PRs vindos de forks:** o GitHub não disponibiliza Repository Secrets como `SONAR_TOKEN` para o evento `pull_request` de forks. Nesse caso o workflow emite um warning e termina pelo caminho desabilitado, sem executar scanner nem Quality Gate. Portanto, um check Sonar verde em um fork PR não comprova que a contribuição foi analisada e não deve ser o único gate obrigatório para contribuições não confiáveis.
+
+A configuração completa, incluindo cobertura, versionamento SemVer, branch protection, forks e troubleshooting, está em [docs/sonarqube-cloud.pt-BR.md](docs/sonarqube-cloud.pt-BR.md). A versão em inglês está em [docs/sonarqube-cloud.md](docs/sonarqube-cloud.md).
 
 ## Conteúdo gerado versus manutenção do template
 
@@ -503,6 +519,8 @@ Conteúdo específico de manutenção do template é excluído, incluindo:
 ## Documentação
 
 - [README in English](README.en.md): versão em inglês desta visão geral;
+- [Configuração do SonarQube Cloud](docs/sonarqube-cloud.pt-BR.md): setup, Quality Gate, New Code, cobertura, forks e troubleshooting;
+- [SonarQube Cloud setup](docs/sonarqube-cloud.md): versão em inglês do guia Sonar;
 - [Template development](docs/template-development.md): regras para manter e evoluir o custom template;
 - [Repository administration](docs/repository-administration.md): baseline de settings administrativos no GitHub;
 - [Generated library README](docs/library-readme.md): README usado em projetos criados por `dotnet new`;
