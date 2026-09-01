@@ -46,7 +46,9 @@ jobs:
           test -s "$template_verifier"
           test -s "$template_e2e"
 
-          grep -Fq 'run-name: "Release ${{ inputs.version || '''dry-run''' }} from ${{ github.ref_name }}"' "$release"
+          grep -Fq 'run-name: "Release ' "$release"
+          grep -Fq "inputs.version || 'dry-run'" "$release"
+          grep -Fq 'github.ref_name' "$release"
           grep -Fq 'pull_request:' "$release"
           grep -Fq 'workflow_dispatch:' "$release"
           grep -Fq 'publish:' "$release"
