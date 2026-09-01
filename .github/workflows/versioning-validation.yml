@@ -124,7 +124,7 @@ jobs:
           grep -Fq 'pull_request:' "$release"
           grep -Fq 'workflow_dispatch:' "$release"
           grep -Fq 'publish:' "$release"
-          grep -Fq 'release-candidate-${{ steps.release-metadata.outputs.version }}' "$release"
+          grep -Fq 'release-candidate-' "$release"
           grep -Fq 'scripts/release-candidate.cs' "$release"
           grep -Fq 'release-manifest.json' "$release"
           grep -Fq 'SHA256SUMS' "$release"

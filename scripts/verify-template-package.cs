@@ -317,7 +317,8 @@ static void AssertPackageTags(string? tags)
 
 static void AssertDeprecatedMetadataAbsent(XElement metadata, XNamespace ns)
 {
-    foreach (var elementName in new[] { "licenseUrl", "iconUrl", "owners", "summary" })
+    // NuGet SDK emits licenseUrl as a compatibility shim for PackageLicenseExpression.
+    foreach (var elementName in new[] { "iconUrl", "owners", "summary" })
     {
         if (metadata.Element(ns + elementName) is not null)
         {
