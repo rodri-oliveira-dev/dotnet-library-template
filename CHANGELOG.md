@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Refactored the release workflow to use PR/dispatch validation, explicit `publish=true` publication, a validated release candidate with `release-manifest.json` and `SHA256SUMS`, artifact attestation, draft GitHub Release before NuGet, and final release publication only after NuGet Trusted Publishing succeeds.
 - SonarQube Cloud now reports the highest reachable release tag by SemVer precedence as `sonar.projectVersion` (falling back to `PackageVersion` before the first release), keeps governance/release scripts in analysis, and blocks both pull requests and `main` pushes when the Quality Gate is actually evaluated.
 - Hardened GitHub Actions permissions to job scope where applicable and pinned `NuGet/login` to the immutable v1.2.0 commit SHA used by the release workflow.
 - Hardened all eligible GitHub Actions references with immutable commit SHAs and disabled credential persistence on read-only checkouts.

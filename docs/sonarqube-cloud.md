@@ -155,7 +155,7 @@ Production code should not be excluded from coverage solely to increase the repo
 
 ## 8. Analysis scope
 
-The baseline does **not** exclude `scripts/**` from Sonar analysis. Repository helpers such as package verification, release guards, tag handling, and generated-repository initialization are engineering-critical code and should remain visible to reliability, security, and text/secrets analysis where supported by Sonar.
+The baseline does **not** exclude `scripts/**` from Sonar analysis. Repository helpers such as package verification, release request resolution, release candidate verification, and generated-repository initialization are engineering-critical code and should remain visible to reliability, security, and text/secrets analysis where supported by Sonar.
 
 If a future file should not contribute to coverage, prefer the narrowest applicable coverage exclusion instead of removing it from the whole analysis. Do not add broad `sonar.exclusions` patterns merely to improve metrics.
 

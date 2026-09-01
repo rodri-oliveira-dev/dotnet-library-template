@@ -47,7 +47,16 @@ var metadata = nuspec.Root.Element(ns + "metadata")
     ?? throw new InvalidOperationException("Metadados do .nuspec não encontrados.");
 
 AssertEqual("Template.Library", metadata.Element(ns + "id")?.Value, "PackageId");
+AssertNotBlank(metadata.Element(ns + "title")?.Value, "Title");
+AssertNotBlank(metadata.Element(ns + "authors")?.Value, "Authors");
 AssertNotBlank(metadata.Element(ns + "description")?.Value, "Description");
+AssertPackageTags(metadata.Element(ns + "tags")?.Value);
+AssertEqual("README.md", metadata.Element(ns + "readme")?.Value, "PackageReadme");
+AssertEqual("nuget-icon.png", metadata.Element(ns + "icon")?.Value, "PackageIcon");
+var license = metadata.Element(ns + "license");
+AssertEqual("expression", license?.Attribute("type")?.Value, "LicenseType");
+AssertEqual("MIT", license?.Value, "LicenseExpression");
+AssertDeprecatedMetadataAbsent(metadata, ns);
 
 if (!string.IsNullOrWhiteSpace(expectedVersion))
 {
@@ -57,6 +66,13 @@ if (!string.IsNullOrWhiteSpace(expectedVersion))
 var assemblyEntry = packageArchive.GetEntry("lib/net10.0/Template.Library.dll")
     ?? throw new InvalidOperationException("Assembly principal não encontrado no pacote.");
 AssertEntryExists(packageArchive, "lib/net10.0/Template.Library.xml");
+var iconEntry = packageArchive.GetEntry("nuget-icon.png")
+    ?? throw new InvalidOperationException("Ícone do pacote não encontrado no .nupkg.");
+if (iconEntry.Length <= 0 || iconEntry.Length > 1_048_576)
+{
+    throw new InvalidOperationException(
+        $"Ícone do pacote deve ser não vazio e ter no máximo 1 MB, obtido {iconEntry.Length} bytes.");
+}
 
 using var assemblyStream = new MemoryStream();
 using (var entryStream = assemblyEntry.Open())
@@ -204,6 +220,38 @@ static void AssertNotBlank(string? value, string field)
     if (string.IsNullOrWhiteSpace(value))
     {
         throw new InvalidOperationException($"{field} não pode ser vazio.");
+    }
+}
+
+static void AssertPackageTags(string? tags)
+{
+    AssertNotBlank(tags, "PackageTags");
+
+    var normalizedTags = tags!
+        .Replace(';', ' ')
+        .Replace(',', ' ');
+    var tagSet = normalizedTags
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var tag in "dotnet;csharp;library;net10;nuget".Split(';'))
+    {
+        if (!tagSet.Contains(tag))
+        {
+            throw new InvalidOperationException($"PackageTags deve incluir '{tag}'.");
+        }
+    }
+}
+
+static void AssertDeprecatedMetadataAbsent(XElement metadata, XNamespace ns)
+{
+    // NuGet SDK emits licenseUrl as a compatibility shim for PackageLicenseExpression.
+    foreach (var elementName in "iconUrl;owners;summary".Split(';'))
+    {
+        if (metadata.Element(ns + elementName) is not null)
+        {
+            throw new InvalidOperationException($"Metadata NuGet obsoleta não deve ser usada: {elementName}");
+        }
     }
 }
 

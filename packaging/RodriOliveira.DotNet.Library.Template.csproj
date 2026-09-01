@@ -2,19 +2,33 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
 
+    <!-- NuGet package -->
     <IsPackable>true</IsPackable>
     <PackageId>RodriOliveira.DotNet.Library.Template</PackageId>
     <PackageType>Template</PackageType>
+
+    <!-- NuGet metadata -->
     <Title>Rodrigo Oliveira .NET Library Template</Title>
     <Authors>Rodrigo de Oliveira</Authors>
-    <Description>Installs the rodri-lib dotnet new template for reusable .NET library projects.</Description>
-    <PackageTags>dotnet;template;library;csharp;nuget;dotnet-new</PackageTags>
+    <Description>
+      Production-ready dotnet new template for .NET 10 class libraries with modern build,
+      testing, packaging, security, Source Link, package validation, versioning,
+      and release automation practices.
+    </Description>
+    <PackageTags>dotnet;csharp;library;template;dotnet-new;net10;nuget</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <!-- NuGet presentation -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>nuget-icon.png</PackageIcon>
+
+    <!-- Repository -->
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</RepositoryUrl>
     <PackageProjectUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
+    <!-- Template package behavior -->
     <IncludeContentInPack>true</IncludeContentInPack>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
@@ -27,12 +41,25 @@
 
   <ItemGroup>
     <Content Include="..\**\*"
-             Exclude="..\.git;../.git;..\.git\**;../.git/**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
+             Exclude="..\.git;../.git;..\.git\**;../.git/**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\release.yml;../.github/workflows/release.yml;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
              Pack="true"
              PackagePath="content/%(RecursiveDir)%(Filename)%(Extension)" />
+
     <Content Remove="..\.git" />
     <Content Remove="../.git" />
-    <Content Include="..\LICENSE" Pack="true" PackagePath="content/" />
-    <None Include="..\README.md" Pack="true" PackagePath="/" />
+
+    <Content Include="..\LICENSE"
+             Pack="true"
+             PackagePath="content/" />
+
+    <!-- NuGet.org README -->
+    <None Include="..\README.md"
+          Pack="true"
+          PackagePath="/" />
+
+    <!-- NuGet.org package icon -->
+    <None Include="..\resources\nuget-icon.png"
+          Pack="true"
+          PackagePath="/" />
   </ItemGroup>
 </Project>

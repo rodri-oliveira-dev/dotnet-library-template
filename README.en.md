@@ -78,10 +78,10 @@ This path runs the .NET template engine, creates the `MyCompany.MyLibrary/` dire
 - Semantic Versioning;
 - base version centralized in `Directory.Build.props`;
 - validation of package and assembly version metadata;
-- manual releases through GitHub Actions or Git-tag pushes;
-- manual tag creation only after build, tests, pack, and package validation succeed;
-- NuGet.org Trusted Publishing through GitHub OIDC with `NUGET_USER` as an explicit publication opt-in;
-- GitHub Release creation independent from NuGet enablement.
+- manual releases through GitHub Actions with `publish=false` for validation and `publish=true` for official publication;
+- versioned release candidate with manifest and SHA-256 checksums before any external publication;
+- NuGet.org Trusted Publishing through GitHub OIDC with publication opted in by `publish=true` and `NUGET_USER`;
+- draft GitHub Release before NuGet and finalization only after successful publication.
 - public NuGet Template Package `RodriOliveira.DotNet.Library.Template`, separate from the `Template.Library` placeholder package;
 - validation of the real template `.nupkg` before publication, including install, generation, and parity comparison against the local template.
 
@@ -356,15 +356,15 @@ The development baseline version is declared once in `Directory.Build.props`:
 
 Individual projects should not duplicate `Version`, `VersionPrefix`, or `PackageVersion`.
 
-For releases, the **Git tag is the source of truth**:
+For releases, the manual `version` input is the source of truth and the tag is derived from it:
 
 ```text
-v1.0.0          -> Version 1.0.0
-v1.2.3          -> Version 1.2.3
-v1.3.0-beta.1   -> Version 1.3.0-beta.1
+1.0.0           -> tag v1.0.0          -> Version 1.0.0
+1.2.3           -> tag v1.2.3          -> Version 1.2.3
+1.3.0-beta.1    -> tag v1.3.0-beta.1   -> Version 1.3.0-beta.1
 ```
 
-`.github/workflows/release.yml` uses `Version` as the single release override, runs restore/build/test/pack, validates the package, ensures the release tag, and only then proceeds to external publication and GitHub Release creation.
+`.github/workflows/release.yml` uses `Version` as the single release override, runs restore, format, build, test, pack, validates the placeholder package, packs and validates the real template package, runs E2E/parity checks, generates `release-manifest.json` and `SHA256SUMS`, and uploads a single `release-candidate-<version>` artifact.
 
 ### Manual release through GitHub Actions
 
@@ -374,25 +374,17 @@ The recommended manual-release flow is:
 2. select the **Release** workflow;
 3. click **Run workflow**;
 4. select branch **main**;
-5. enter **Release version**, for example `v1.2.0` or `v1.3.0-beta.1`;
-6. run the workflow.
+5. enter **version** without a leading `v`, for example `1.2.0` or `1.3.0-beta.1`;
+6. keep **publish=false** to validate without external mutations, or select **publish=true** for official publication;
+7. run the workflow.
 
-The workflow rejects manual releases outside `main` and fails early when the requested tag already exists. It then runs build, tests, pack, and `verify-package`. **The tag is created only after all those validations succeed** and points exactly to the `github.sha` validated by that run.
+Pull requests and manual runs with `publish=false` only build and validate the release candidate. They do not create tags, create GitHub Releases, request NuGet OIDC credentials, or run `dotnet nuget push`.
 
-After the tag is created, the same workflow continues to NuGet when enabled and to GitHub Release creation. The tag created with `GITHUB_TOKEN` does not depend on a second release-workflow execution.
-
-The existing tag-push flow remains supported:
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-For tag-triggered runs, the workflow verifies that the incoming tag resolves to the same SHA being validated before publishing anything.
+With `publish=true`, the workflow requires `refs/heads/main`, rejects a conflicting existing tag before the expensive build, downloads the same candidate validated by the build job, verifies version, tag, commit, manifest, and SHA-256 checksums, attests the artifacts, creates or resumes a draft GitHub Release, publishes the package through NuGet Trusted Publishing/OIDC, and only then finalizes the GitHub Release. If NuGet publication fails, the release remains draft and the workflow fails.
 
 ### NuGet.org Trusted Publishing
 
-NuGet.org publication is explicitly **opt-in**. `NUGET_USER` is a **Repository Variable**, not a secret, and acts as the publication-enablement flag.
+NuGet.org publication is explicitly **opt-in** through the `publish=true` input and the `NUGET_USER` Repository Variable. `NUGET_USER` is not a secret and identifies the nuget.org user/profile used by the Trusted Publishing policy.
 
 To configure it when it does not exist yet:
 
@@ -414,14 +406,15 @@ On nuget.org, also create a **Trusted Publishing policy** for the repository tar
 The workflow centralizes the decision in `nuget-publishing-enabled`. NuGet publication is enabled only when:
 
 ```text
-valid release
-AND PackageId is not the placeholder
+publish=true
+AND refs/heads/main
+AND validated artifact matches version/tag/commit
 AND NUGET_USER is configured and non-empty
 ```
 
-If `NUGET_USER` is absent, empty, or whitespace-only, the release **does not fail**: `NuGet/login` is not started, no publication OIDC credential is requested, and `dotnet nuget push` is not executed. The Git tag and GitHub Release are still created normally; for a real package, `.nupkg` and `.snupkg` are attached to the GitHub Release even when NuGet publishing is disabled.
+If `NUGET_USER` is absent, empty, or whitespace-only, `publish=false` still works as validation. With `publish=true`, the run fails before external authentication because an official publication must be able to publish the validated package.
 
-When `NUGET_USER` is configured and NuGet publishing is enabled, the GitHub Release is created only after NuGet publication succeeds, so the repository does not advertise a NuGet distribution that failed.
+The workflow creates or resumes a draft GitHub Release before NuGet so it can attach the validated artifacts. It is finalized only after NuGet publication succeeds, so the repository does not advertise a NuGet distribution that failed.
 
 The template does not use a long-lived `NUGET_API_KEY`.
 
@@ -429,7 +422,7 @@ The template does not use a long-lived `NUGET_API_KEY`.
 
 The source repository uses `Template.Library` as its neutral identity. The release workflow detects that identity and blocks accidental publication to NuGet.org.
 
-The template repository can still create a versioned tag and GitHub Release, even without `NUGET_USER`, but it does not publish or attach the placeholder package. In projects generated through `dotnet new`, `PackageId` is replaced with the real library name; GitHub Releases work independently from NuGet, while NuGet publication becomes available after Trusted Publishing and `NUGET_USER` are configured.
+In this source repository, the only publishable package is `RodriOliveira.DotNet.Library.Template.<version>.nupkg`. The `Template.Library` package can be built, packed, and validated locally, but it is kept in validation artifacts and never enters the publishable release candidate. In projects generated through `dotnet new`, the delivered workflow publishes only the generated library's real PackageId when Trusted Publishing, `NUGET_USER`, the `release` environment, and `publish=true` are configured.
 
 ## Security and quality
 
@@ -441,12 +434,12 @@ The main workflows have separate responsibilities:
 | `codeql.yml` | CodeQL analysis for C# |
 | `dependency-review.yml` | blocks newly introduced High/Critical vulnerabilities in pull requests |
 | `sonar.yml` | optional SonarQube Cloud analysis |
-| `release.yml` | validation, release-tag creation/verification, optional NuGet publication, and GitHub Release |
+| `release.yml` | release candidate validation, attestation, draft GitHub Release, NuGet Trusted Publishing, and release finalization |
 | `template-validation.yml` | end-to-end `dotnet new` validation |
 | `template-package-validation.yml` | maintenance-only validation of the real NuGet Template Package |
 | `sonar-template-validation.yml` | validates the Sonar contract in generated output |
 | `versioning-validation.yml` | validates the SemVer and package/assembly metadata contract |
-| `release-publishing-validation.yml` | maintenance-only validation of release requests, tag handling, and NuGet opt-in |
+| `release-publishing-validation.yml` | maintenance-only validation of the release candidate, explicit publication, OIDC, draft release, and NuGet opt-in |
 | `github-template-initialization-validation.yml` | maintenance-only validation of GitHub Template Repository initialization |
 
 Keeping these concerns separate makes build, security, external-analysis, generation, and release failures independently diagnosable.
@@ -525,7 +518,7 @@ Template-maintenance-only content is excluded, including:
 │   ├── repository-administration.md
 │   └── template-development.md
 ├── scripts/
-│   ├── ensure-release-tag.sh
+│   ├── release-candidate.cs
 │   ├── resolve-nuget-publishing.sh
 │   ├── resolve-release-request.sh
 │   └── verify-package.cs

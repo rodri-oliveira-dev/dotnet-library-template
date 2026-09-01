@@ -32,6 +32,7 @@
         "**/*.user",
         "README.md",
         "README.en.md",
+        ".github/workflows/release.yml",
         "docs/template-development.md",
         "docs/repository-administration.md",
         "packaging/**",
@@ -47,7 +48,8 @@
         "scripts/validate-template-package-e2e.sh"
       ],
       "rename": {
-        "docs/library-readme.md": "README.md"
+        "docs/library-readme.md": "README.md",
+        "docs/library-release.yml": ".github/workflows/release.yml"
       }
     }
   ]
