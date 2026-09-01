@@ -107,7 +107,7 @@ var requiredEntries = new[]
     "content/tests/Template.Library.Tests/packages.lock.json",
     "content/docs/library-readme.md",
     "content/.github/workflows/ci.yml",
-    "content/.github/workflows/release.yml",
+    "content/docs/library-release.yml",
     "content/scripts/release-candidate.cs",
     "content/scripts/verify-package.cs",
 };
@@ -133,10 +133,11 @@ using (var templateJsonReader = new StreamReader(templateJsonEntry.Open()))
     AssertStringContains(templateJson, "\"shortName\": \"rodri-lib\"", "template.json shortName");
     AssertStringContains(templateJson, "\"sourceName\": \"Template.Library\"", "template.json sourceName");
     AssertStringContains(templateJson, "\"rename\":", "template.json rename");
+    AssertStringContains(templateJson, "\"docs/library-release.yml\": \".github/workflows/release.yml\"", "template.json release workflow rename");
 }
 
-var generatedReleaseEntry = archive.GetEntry("content/.github/workflows/release.yml")
-    ?? throw new InvalidOperationException("Generated release workflow entry was not found.");
+var generatedReleaseEntry = archive.GetEntry("content/docs/library-release.yml")
+    ?? throw new InvalidOperationException("Generated release workflow template entry was not found.");
 using (var generatedReleaseReader = new StreamReader(generatedReleaseEntry.Open()))
 {
     var generatedRelease = generatedReleaseReader.ReadToEnd();
@@ -179,7 +180,7 @@ var forbiddenPrefixes = new[]
 var forbiddenExactEntries = new[]
 {
     "content/.git",
-    "content/docs/library-release.yml",
+    "content/.github/workflows/release.yml",
     "content/.github/workflows/template-package-validation.yml",
     "content/scripts/verify-template-package.cs",
     "content/scripts/validate-template-package-e2e.sh",

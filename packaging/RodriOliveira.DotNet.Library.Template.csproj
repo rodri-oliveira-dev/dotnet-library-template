@@ -41,7 +41,7 @@
 
   <ItemGroup>
     <Content Include="..\**\*"
-             Exclude="..\.git;../.git;..\.git\**;../.git/**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\release.yml;../.github/workflows/release.yml;..\.github\workflows\template-package-validation.yml;..\docs\library-release.yml;../docs/library-release.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
+             Exclude="..\.git;../.git;..\.git\**;../.git/**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\release.yml;../.github/workflows/release.yml;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
              Pack="true"
              PackagePath="content/%(RecursiveDir)%(Filename)%(Extension)" />
 
@@ -51,10 +51,6 @@
     <Content Include="..\LICENSE"
              Pack="true"
              PackagePath="content/" />
-
-    <Content Include="..\docs\library-release.yml"
-             Pack="true"
-             PackagePath="content/.github/workflows/release.yml" />
 
     <!-- NuGet.org README -->
     <None Include="..\README.md"
