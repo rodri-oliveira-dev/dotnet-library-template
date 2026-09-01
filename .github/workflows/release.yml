@@ -311,7 +311,9 @@ jobs:
 
           (
             cd "$release_dir"
-            sha256sum *.nupkg *.snupkg 2>/dev/null | sort -k2 > SHA256SUMS
+            shopt -s nullglob
+            checksum_files=( *.nupkg *.snupkg )
+            sha256sum "${checksum_files[@]}" | sort -k2 > SHA256SUMS
           )
 
           python - <<'PY'
@@ -434,11 +436,16 @@ jobs:
           PY
 
           if [[ "$SAFE_TO_PUBLISH" == 'true' ]]; then
-            dotnet run --file scripts/verify-package.cs --               "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg"               --require-source-link               --expected-version "$RELEASE_VERSION"
+            dotnet run --file scripts/verify-package.cs -- \
+              "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg" \
+              --require-source-link \
+              --expected-version "$RELEASE_VERSION"
           fi
 
           if [[ "$TEMPLATE_PACKAGE_AVAILABLE" == 'true' ]]; then
-            dotnet run --file scripts/verify-template-package.cs --               "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"               --expected-version "$RELEASE_VERSION"
+            dotnet run --file scripts/verify-template-package.cs -- \
+              "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg" \
+              --expected-version "$RELEASE_VERSION"
           fi
 
       - name: Attest release artifacts
@@ -446,7 +453,6 @@ jobs:
         with:
           subject-path: |
             artifacts/release/*.nupkg
-            artifacts/release/*.snupkg
             artifacts/release/release-manifest.json
             artifacts/release/SHA256SUMS
 
@@ -509,11 +515,19 @@ jobs:
           set -euo pipefail
 
           if [[ "$SAFE_TO_PUBLISH" == 'true' ]]; then
-            dotnet nuget push               "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg"               --source https://api.nuget.org/v3/index.json               --api-key "$NUGET_API_KEY"               --skip-duplicate
+            dotnet nuget push \
+              "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg" \
+              --source https://api.nuget.org/v3/index.json \
+              --api-key "$NUGET_API_KEY" \
+              --skip-duplicate
           fi
 
           if [[ "$TEMPLATE_PACKAGE_AVAILABLE" == 'true' ]]; then
-            dotnet nuget push               "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"               --source https://api.nuget.org/v3/index.json               --api-key "$NUGET_API_KEY"               --skip-duplicate
+            dotnet nuget push \
+              "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg" \
+              --source https://api.nuget.org/v3/index.json \
+              --api-key "$NUGET_API_KEY" \
+              --skip-duplicate
           fi
 
       - name: Configure GitHub Packages source
@@ -539,11 +553,19 @@ jobs:
           set -euo pipefail
 
           if [[ "$SAFE_TO_PUBLISH" == 'true' ]]; then
-            dotnet nuget push               "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg"               --source github               --api-key "$GITHUB_TOKEN"               --skip-duplicate
+            dotnet nuget push \
+              "artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg" \
+              --source github \
+              --api-key "$GITHUB_TOKEN" \
+              --skip-duplicate
           fi
 
           if [[ "$TEMPLATE_PACKAGE_AVAILABLE" == 'true' ]]; then
-            dotnet nuget push               "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"               --source github               --api-key "$GITHUB_TOKEN"               --skip-duplicate
+            dotnet nuget push \
+              "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg" \
+              --source github \
+              --api-key "$GITHUB_TOKEN" \
+              --skip-duplicate
           fi
 
       - name: Publish GitHub Release
