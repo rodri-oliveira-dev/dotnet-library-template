@@ -357,9 +357,11 @@ jobs:
           grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
           grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
           grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
-          grep -Fq '"version": "10.0.303"' "$GENERATED_ROOT/global.json"
-          grep -Fq '"rollForward": "latestFeature"' "$GENERATED_ROOT/global.json"
-          grep -Fq '"runner": "Microsoft.Testing.Platform"' "$GENERATED_ROOT/global.json"
+          if ! cmp -s global.json "$GENERATED_ROOT/global.json"; then
+            echo "global.json gerado diverge da configuração da raiz:"
+            diff -u global.json "$GENERATED_ROOT/global.json" || true
+            exit 1
+          fi
           grep -Fq 'csharp_preferred_modifier_order = file,public,protected,internal,private,static,abstract,virtual,override,sealed,readonly,required,extern,new,unsafe,volatile,async:suggestion' "$GENERATED_ROOT/.editorconfig"
           grep -Fq 'dotnet_diagnostic.CA1062.severity = warning' "$GENERATED_ROOT/.editorconfig"
           grep -Fq 'dotnet_diagnostic.CA1859.severity = suggestion' "$GENERATED_ROOT/.editorconfig"
