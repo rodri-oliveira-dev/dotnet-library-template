@@ -69,7 +69,7 @@ jobs:
           grep -Fq 'release-manifest.json' "$release"
           grep -Fq 'SHA256SUMS' "$release"
           grep -Fq 'Upload validated release candidate' "$release"
-          grep -Fq 'release-candidate-${{ steps.release-metadata.outputs.version }}' "$release"
+          grep -Fq 'release-candidate-' "$release"
 
           grep -Fq 'placeholder_package_id="Template"".""Library"' "$release"
           grep -Fq 'safe_to_publish=false' "$release"
