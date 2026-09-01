@@ -97,7 +97,11 @@ jobs:
         shell: bash
         run: |
           test -s global.json
-          grep -Fq '"version": "10.0.303"' global.json
+          configured_sdk="$(sed -nE 's/^[[:space:]]*"version":[[:space:]]*"([^"]+)".*/\1/p' global.json | head -n 1)"
+          if [[ ! "$configured_sdk" =~ ^10\.0\.[0-9]+$ ]]; then
+            echo "global.json deve declarar um SDK estável do canal .NET 10, obtido '$configured_sdk'."
+            exit 1
+          fi
           grep -Fq '"rollForward": "latestFeature"' global.json
           grep -Fq '"allowPrerelease": false' global.json
           grep -Fq '"runner": "Microsoft.Testing.Platform"' global.json
