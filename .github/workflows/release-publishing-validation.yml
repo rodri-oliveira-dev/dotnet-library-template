@@ -93,6 +93,11 @@ jobs:
           grep -Fq 'Create or resume draft GitHub Release' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'Publish template package to NuGet.org' "$release"
+          grep -Fq 'Publish template package to GitHub Packages' "$release"
+          grep -Fq 'https://nuget.pkg.github.com/rodri-oliveira-dev/index.json' "$release"
+          grep -Fq 'GITHUB_TOKEN:' "$release"
+          grep -Fq 'github.token' "$release"
+          grep -Fq -- '--api-key "$GITHUB_TOKEN"' "$release"
           grep -Fq 'Publish GitHub Release' "$release"
           grep -Fq 'environment: release' "$release"
           grep -Fq 'refs/heads/main' "$release"
@@ -102,6 +107,7 @@ jobs:
           grep -Fq 'needs.build.outputs.commit' "$release"
           grep -Fq 'ref: "' "$release"
           grep -Fq 'id-token: write' "$release"
+          grep -Fq 'packages: write' "$release"
           grep -Fq 'attestations: write' "$release"
           grep -Fq 'artifact-metadata: write' "$release"
 
@@ -110,8 +116,14 @@ jobs:
             exit 1
           fi
 
-          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|packages:[[:space:]]write|artifacts/\*\*/\*.nupkg|major-alias|minor-alias|github packages|nuget.pkg.github.com' "$release"; then
-            echo 'Persistent NuGet credentials, broad permissions, GitHub Packages, or Action aliases are not allowed.'
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|artifacts/\*\*/\*.nupkg|major-alias|minor-alias' "$release"; then
+            echo 'Persistent NuGet credentials, broad permissions, or Action aliases are not allowed.'
+            exit 1
+          fi
+
+          skip_duplicate_count="$(grep -Fc -- '--skip-duplicate' "$release")"
+          if (( skip_duplicate_count < 2 )); then
+            echo "NuGet.org and GitHub Packages publication must both use --skip-duplicate."
             exit 1
           fi
 
@@ -124,11 +136,21 @@ jobs:
             exit 1
           fi
 
+          package_write_jobs="$(awk '
+            /^[[:space:]]{2}[A-Za-z0-9_-]+:$/ { job=$1; sub(":", "", job) }
+            /packages:[[:space:]]write/ { print job }
+          ' "$release")"
+          if [[ "$package_write_jobs" != 'publish' ]]; then
+            echo "packages: write must exist only on the publish job, got: $package_write_jobs"
+            exit 1
+          fi
+
           draft_line="$(grep -n 'Create or resume draft GitHub Release' "$release" | cut -d: -f1)"
           nuget_line="$(grep -n 'Publish template package to NuGet.org' "$release" | cut -d: -f1)"
+          github_packages_line="$(grep -n 'Publish template package to GitHub Packages' "$release" | cut -d: -f1)"
           final_line="$(grep -n 'Publish GitHub Release' "$release" | tail -n 1 | cut -d: -f1)"
-          if (( draft_line >= nuget_line || nuget_line >= final_line )); then
-            echo 'Release must create/resume draft before NuGet and finalize only after NuGet succeeds.'
+          if (( draft_line >= nuget_line || nuget_line >= github_packages_line || github_packages_line >= final_line )); then
+            echo 'Release must create/resume draft before package publication and finalize only after NuGet.org and GitHub Packages succeed.'
             exit 1
           fi
 
