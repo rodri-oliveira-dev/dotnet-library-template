@@ -196,11 +196,12 @@ For the complete configuration and troubleshooting reference, see [docs/sonarqub
 3. Click **Run workflow**.
 4. Select branch **main**.
 5. Enter **Release version**, for example `v1.0.0` or `v1.1.0-beta.1`.
-6. Start the workflow.
+6. Enable **Publish the validated package, GitHub Release, provenance, and GitHub Packages artifact**.
+7. Start the workflow.
 
 The workflow rejects manual releases from any ref other than the `main` branch and fails early if the requested tag already exists. It then restores dependencies in locked mode, resolves the requested version through MSBuild, builds, tests, packs, and validates package and assembly metadata.
 
-Only after all validation succeeds does the workflow create the requested Git tag. The tag points exactly to the commit SHA validated by that workflow run. NuGet publication and GitHub Release creation happen only after this tag gate succeeds.
+Only after all validation succeeds does the workflow create the requested Git tag. The tag points exactly to the commit SHA validated by that workflow run. NuGet publication and GitHub Release creation happen only after this tag gate succeeds. If `publish` remains disabled, the manual run only validates and uploads the release candidate as a temporary artifact.
 
 ### Alternative: push an existing release tag
 

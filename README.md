@@ -375,9 +375,10 @@ O fluxo recomendado para uma release manual é:
 3. clique em **Run workflow**;
 4. selecione a branch **main**;
 5. informe **Release version**, por exemplo `v1.2.0` ou `v1.3.0-beta.1`;
-6. execute o workflow.
+6. marque **Publish the validated package, GitHub Release, provenance, and GitHub Packages artifact**;
+7. execute o workflow.
 
-O workflow rejeita releases manuais fora de `main` e falha antecipadamente se a tag informada já existir. Depois disso ele executa build, testes, pack e `verify-package`. **A tag só é criada depois que todas essas validações passam** e aponta exatamente para o `github.sha` validado naquela execução.
+O workflow rejeita releases manuais fora de `main` e falha antecipadamente se a tag informada já existir. Depois disso ele executa build, testes, pack e `verify-package`. **A tag só é criada depois que todas essas validações passam** e aponta exatamente para o `github.sha` validado naquela execução. Se `publish` ficar desmarcado, a execução apenas valida e envia o candidato de release como artifact temporário, sem criar tag, publicar pacotes ou criar GitHub Release.
 
 Depois da criação da tag, o mesmo workflow continua para NuGet quando habilitado e para o GitHub Release. A tag criada com o `GITHUB_TOKEN` não depende de uma segunda execução do workflow.
 

@@ -47,8 +47,12 @@ jobs:
           test -s "$template_e2e"
 
           grep -Fq 'run-name: "Release ' "$release"
-          grep -Fq "inputs.version || 'dry-run'" "$release"
+          grep -Fq "github.event_name == 'workflow_dispatch' && inputs.version" "$release"
+          grep -Fq "github.ref_type == 'tag' && github.ref_name" "$release"
           grep -Fq 'github.ref_name' "$release"
+          grep -Fq 'push:' "$release"
+          grep -Fq 'tags:' "$release"
+          grep -Fq "'v*.*.*'" "$release"
           grep -Fq 'pull_request:' "$release"
           grep -Fq 'workflow_dispatch:' "$release"
           grep -Fq 'publish:' "$release"
@@ -62,7 +66,11 @@ jobs:
           grep -Fq 'build:' "$release"
           grep -Fq 'name: Build release artifacts' "$release"
           grep -Fq 'Resolve release metadata' "$release"
-          grep -Fq "format('v0.0.0-ci.{0}', github.run_number)" "$release"
+          grep -Fq 'v0.0.0-ci.${GITHUB_RUN_NUMBER}' "$release"
+          grep -Fq 'Release tag' "$release"
+          grep -Fq 'already exists. Choose a new version.' "$release"
+          grep -Fq 'should-publish:' "$release"
+          grep -Fq 'is-manual-release:' "$release"
           grep -Fq 'Verify formatting' "$release"
           grep -Fq 'Build with analyzers' "$release"
           grep -Fq -- '--warnaserror' "$release"
@@ -82,10 +90,14 @@ jobs:
           grep -Fq 'Pack template package' "$release"
           grep -Fq 'scripts/verify-template-package.cs' "$release"
           grep -Fq 'scripts/validate-template-package-e2e.sh' "$release"
+          grep -Fq 'Resolve NuGet publishing opt-in' "$release"
+          grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
+          grep -Fq 'nuget-publishing-enabled:' "$release"
+          grep -Fq 'steps.nuget-publishing.outputs.nuget_publishing_enabled' "$release"
 
           grep -Fq 'publish:' "$release"
           grep -Fq 'name: Publish official release' "$release"
-          grep -Fq "github.event_name == 'workflow_dispatch' && inputs.publish" "$release"
+          grep -Fq "needs.build.outputs.should-publish == 'true'" "$release"
           grep -Fq 'environment: release' "$release"
           grep -Fq 'contents: write' "$release"
           grep -Fq 'id-token: write' "$release"
@@ -94,20 +106,23 @@ jobs:
           grep -Fq 'packages: write' "$release"
           grep -Fq 'Validate protected publication request' "$release"
           grep -Fq 'refs/heads/main' "$release"
-          grep -Fq 'NUGET_USER must be configured before official publication.' "$release"
+          grep -Fq 'refs/tags/${RELEASE_TAG}' "$release"
           grep -Fq 'Checkout exact release commit' "$release"
           grep -Fq 'Download validated release candidate' "$release"
           grep -Fq 'sha256sum -c SHA256SUMS' "$release"
           grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
-          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Create or verify release tag' "$release"
+          grep -Fq 'repos/${GITHUB_REPOSITORY}/git/refs' "$release"
           grep -Fq -- '--draft' "$release"
-          grep -Fq 'gh release upload' "$release"
           grep -Fq 'Authenticate to NuGet.org with trusted publishing' "$release"
+          grep -Fq "needs.build.outputs.nuget-publishing-enabled == 'true'" "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'Publish packages to NuGet.org' "$release"
           grep -Fq 'Configure GitHub Packages source' "$release"
           grep -Fq 'Publish packages to GitHub Packages' "$release"
           grep -Fq 'Publish GitHub Release' "$release"
+          grep -Fq 'gh release create "${RELEASE_TAG}"' "$release"
+          grep -Fq 'gh release upload "${RELEASE_TAG}" artifacts/release/* --clobber' "$release"
           grep -Fq -- '--draft=false' "$release"
 
           grep -Fq 'artifacts/release/${LIBRARY_PACKAGE_ID}.${RELEASE_VERSION}.nupkg' "$release"
@@ -118,8 +133,18 @@ jobs:
             exit 1
           fi
 
-          if grep -Eq '^[[:space:]]{2}push:' "$release"; then
-            echo 'The release workflow must not publish from push/tag events; official publication is workflow_dispatch-only.'
+          if grep -Fq 'NUGET_USER must be configured before official publication.' "$release"; then
+            echo 'NUGET_USER must not block tag or GitHub Release creation.'
+            exit 1
+          fi
+
+          if ! grep -Eq '^[[:space:]]{2}push:' "$release"; then
+            echo 'The release workflow must keep the documented tag-push trigger.'
+            exit 1
+          fi
+
+          if ! grep -Eq "^[[:space:]]{6}- 'v\\*\\.\\*\\.\\*'" "$release"; then
+            echo 'The release workflow tag trigger must be limited to SemVer-looking v*.*.* tags.'
             exit 1
           fi
 
@@ -172,13 +197,15 @@ jobs:
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$release"
           grep -Fq 'name: Build release artifacts' "$release"
           grep -Fq 'name: Publish official release' "$release"
-          grep -Fq "github.event_name == 'workflow_dispatch' && inputs.publish" "$release"
+          grep -Fq "needs.build.outputs.should-publish == 'true'" "$release"
           grep -Fq 'environment: release' "$release"
           grep -Fq 'NUGET_USER' "$release"
+          grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'Publish packages to NuGet.org' "$release"
           grep -Fq 'Publish packages to GitHub Packages' "$release"
-          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Create or verify release tag' "$release"
+          grep -Fq 'Publish GitHub Release' "$release"
           grep -Fq 'SHA256SUMS' "$release"
 
           if [[ -e "$GENERATED_ROOT/.github/workflows/release-publishing-validation.yml" ]]; then

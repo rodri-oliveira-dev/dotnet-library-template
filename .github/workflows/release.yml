@@ -1,8 +1,11 @@
 name: Release
 
-run-name: "Release ${{ inputs.version || 'dry-run' }} from ${{ github.ref_name }}"
+run-name: "Release ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_type == 'tag' && github.ref_name || 'dry-run' }} from ${{ github.ref_name }}"
 
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   pull_request:
     branches:
       - main
@@ -17,6 +20,9 @@ on:
       - scripts/verify-package.cs
       - scripts/verify-template-package.cs
       - scripts/validate-template-package-e2e.sh
+      - scripts/resolve-release-request.sh
+      - scripts/resolve-nuget-publishing.sh
+      - scripts/ensure-release-tag.sh
       - .template.config/template.json
   workflow_dispatch:
     inputs:
@@ -50,9 +56,13 @@ jobs:
       version: "${{ steps.release-metadata.outputs.version }}"
       tag: "${{ steps.release-metadata.outputs.tag }}"
       is-prerelease: "${{ steps.release-metadata.outputs.is_prerelease }}"
+      should-publish: "${{ steps.release-metadata.outputs.should_publish }}"
+      is-manual-release: "${{ steps.release-metadata.outputs.is_manual_release }}"
       library-package-id: "${{ steps.package.outputs.package_id }}"
       safe-to-publish: "${{ steps.package.outputs.safe_to_publish }}"
       template-package-available: "${{ steps.template-package.outputs.template_package_available }}"
+      nuget-publishing-enabled: "${{ steps.nuget-publishing.outputs.nuget_publishing_enabled }}"
+      nuget-publishing-reason: "${{ steps.nuget-publishing.outputs.nuget_publishing_reason }}"
 
     steps:
       - name: Checkout repository
@@ -70,18 +80,72 @@ jobs:
         id: release-metadata
         shell: bash
         env:
-          REQUESTED_VERSION: "${{ inputs.version || format('v0.0.0-ci.{0}', github.run_number) }}"
+          EVENT_NAME: "${{ github.event_name }}"
+          MANUAL_VERSION: "${{ inputs.version || '' }}"
+          MANUAL_PUBLISH: "${{ inputs.publish || false }}"
+          REF_NAME: "${{ github.ref_name }}"
+          REF_TYPE: "${{ github.ref_type }}"
+          RELEASE_BRANCH: main
         run: |
           set -euo pipefail
 
           semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
-          if [[ ! "${REQUESTED_VERSION}" =~ ${semver_regex} ]]; then
-            echo "::error::Release version '${REQUESTED_VERSION}' must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
+          case "$EVENT_NAME" in
+            pull_request)
+              release_tag="v0.0.0-ci.${GITHUB_RUN_NUMBER}"
+              should_publish=false
+              is_manual_release=false
+              ;;
+            workflow_dispatch)
+              if [[ "$REF_TYPE" != 'branch' || "$REF_NAME" != "$RELEASE_BRANCH" ]]; then
+                echo "::error::Manual releases must run from branch '$RELEASE_BRANCH'. Current ref: ${REF_TYPE:-unknown}/${REF_NAME:-unknown}."
+                exit 1
+              fi
+
+              if [[ "$MANUAL_PUBLISH" != 'true' && "$MANUAL_PUBLISH" != 'false' ]]; then
+                echo "::error::Manual publish input must be 'true' or 'false', got '$MANUAL_PUBLISH'."
+                exit 1
+              fi
+
+              release_tag="$MANUAL_VERSION"
+              should_publish="$MANUAL_PUBLISH"
+              is_manual_release=true
+
+              if [[ "$should_publish" == 'true' ]]; then
+                if ! remote_tag="$(git ls-remote --tags origin "refs/tags/$release_tag")"; then
+                  echo "::error::Could not query origin for release tag '$release_tag'."
+                  exit 1
+                fi
+
+                if [[ -n "$remote_tag" ]]; then
+                  echo "::error::Release tag '$release_tag' already exists. Choose a new version."
+                  exit 1
+                fi
+              fi
+              ;;
+            push)
+              if [[ "$REF_TYPE" != 'tag' ]]; then
+                echo "::error::Push-triggered releases must run from a tag ref. Current ref: ${REF_TYPE:-unknown}/${REF_NAME:-unknown}."
+                exit 1
+              fi
+
+              release_tag="$REF_NAME"
+              should_publish=true
+              is_manual_release=false
+              ;;
+            *)
+              echo "::error::Unsupported release event '$EVENT_NAME'."
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$release_tag" =~ ${semver_regex} ]]; then
+            echo "::error::Release version '$release_tag' must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
             exit 1
           fi
 
-          version="${REQUESTED_VERSION#v}"
+          version="${release_tag#v}"
           tag="v${version}"
           is_prerelease=false
 
@@ -93,17 +157,19 @@ jobs:
             echo "version=${version}"
             echo "tag=${tag}"
             echo "is_prerelease=${is_prerelease}"
+            echo "should_publish=${should_publish}"
+            echo "is_manual_release=${is_manual_release}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Restore local tools
         run: dotnet tool restore
 
       - name: Restore dependencies in locked mode
-        run: dotnet restore ./Template.Library.slnx --locked-mode
+        run: dotnet restore Template.Library.slnx --locked-mode
 
       - name: Verify formatting
         run: >-
-          dotnet format ./Template.Library.slnx
+          dotnet format Template.Library.slnx
           --verify-no-changes
           --no-restore
 
@@ -176,6 +242,16 @@ jobs:
 
           echo "template_package_available=$template_package_available" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve NuGet publishing opt-in
+        id: nuget-publishing
+        shell: bash
+        env:
+          SHOULD_PUBLISH: "${{ steps.release-metadata.outputs.should_publish }}"
+          SAFE_TO_PUBLISH: "${{ steps.package.outputs.safe_to_publish }}"
+          TEMPLATE_PACKAGE_AVAILABLE: "${{ steps.template-package.outputs.template_package_available }}"
+          NUGET_USER: "${{ vars.NUGET_USER }}"
+        run: bash scripts/resolve-nuget-publishing.sh
+
       - name: Validate resolved MSBuild version
         shell: bash
         env:
@@ -204,7 +280,7 @@ jobs:
         env:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
-          dotnet build ./Template.Library.slnx
+          dotnet build Template.Library.slnx
           --configuration Release
           --no-restore
           --warnaserror
@@ -214,19 +290,16 @@ jobs:
 
       - name: Run tests
         run: >-
-          dotnet test ./Template.Library.slnx
+          dotnet test Template.Library.slnx
           --configuration Release
           --no-build
           --no-restore
-          --results-directory ./artifacts/release-test-results
-          --
-          --report-trx
 
       - name: Pack library artifact
         env:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
-          dotnet pack ./src/Template.Library/Template.Library.csproj
+          dotnet pack src/Template.Library/Template.Library.csproj
           --configuration Release
           --no-build
           --output ./artifacts/packages
@@ -238,7 +311,7 @@ jobs:
         env:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
-          dotnet run --file scripts/verify-package.cs -- ./artifacts/packages
+          dotnet run --file scripts/verify-package.cs -- artifacts/packages
           --require-source-link
           --expected-version "${RELEASE_VERSION}"
 
@@ -247,9 +320,9 @@ jobs:
         env:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
-          dotnet pack ./packaging/RodriOliveira.DotNet.Library.Template.csproj
+          dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj
           --configuration Release
-          --output ./artifacts/templates
+          --output artifacts/templates
           -p:Version="${RELEASE_VERSION}"
 
       - name: Validate template package contents
@@ -257,7 +330,7 @@ jobs:
         env:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
-          dotnet run --file scripts/verify-template-package.cs -- ./artifacts/templates
+          dotnet run --file scripts/verify-template-package.cs -- artifacts/templates
           --expected-version "${RELEASE_VERSION}"
 
       - name: Validate template package install and parity
@@ -266,7 +339,7 @@ jobs:
           RELEASE_VERSION: "${{ steps.release-metadata.outputs.version }}"
         run: >-
           bash scripts/validate-template-package-e2e.sh
-          "./artifacts/templates/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"
+          "artifacts/templates/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"
           "${GITHUB_WORKSPACE}"
 
       - name: Assemble validated release candidate
@@ -349,7 +422,7 @@ jobs:
 
   publish:
     name: Publish official release
-    if: "${{ github.event_name == 'workflow_dispatch' && inputs.publish }}"
+    if: "${{ needs.build.outputs.should-publish == 'true' }}"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -366,16 +439,17 @@ jobs:
         env:
           RELEASE_VERSION: "${{ needs.build.outputs.version }}"
           RELEASE_TAG: "${{ needs.build.outputs.tag }}"
+          IS_MANUAL_RELEASE: "${{ needs.build.outputs.is-manual-release }}"
         run: |
           set -euo pipefail
 
-          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+          if [[ "$IS_MANUAL_RELEASE" == 'true' && "${GITHUB_REF}" != "refs/heads/main" ]]; then
             echo 'Official publication is allowed only from refs/heads/main.' >&2
             exit 2
           fi
 
-          if [[ -z "${{ vars.NUGET_USER }}" ]]; then
-            echo 'NUGET_USER must be configured before official publication.' >&2
+          if [[ "$IS_MANUAL_RELEASE" != 'true' && "${GITHUB_REF}" != "refs/tags/${RELEASE_TAG}" ]]; then
+            echo "Push-triggered publication must run from refs/tags/${RELEASE_TAG}." >&2
             exit 2
           fi
 
@@ -448,18 +522,12 @@ jobs:
               --expected-version "$RELEASE_VERSION"
           fi
 
-      - name: Attest release artifacts
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: |
-            artifacts/release/*.nupkg
-            artifacts/release/release-manifest.json
-            artifacts/release/SHA256SUMS
-
-      - name: Create or resume draft GitHub Release
+      - name: Create or verify release tag
+        shell: bash
         env:
           GH_TOKEN: "${{ github.token }}"
           RELEASE_TAG: "${{ needs.build.outputs.tag }}"
+          IS_MANUAL_RELEASE: "${{ needs.build.outputs.is-manual-release }}"
         run: |
           set -euo pipefail
 
@@ -471,39 +539,40 @@ jobs:
               echo "Tag ${RELEASE_TAG} already points to $existing_commit, not ${GITHUB_SHA}." >&2
               exit 3
             fi
+
+            echo "Release tag ${RELEASE_TAG} already points to ${GITHUB_SHA}."
+            exit 0
           fi
 
-          release_state="$(gh release view "${RELEASE_TAG}" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
-          if [[ "$release_state" == 'false' ]]; then
-            echo "Release ${RELEASE_TAG} is already published; refusing to mutate an immutable release." >&2
+          if [[ "$IS_MANUAL_RELEASE" != 'true' ]]; then
+            echo "Release tag ${RELEASE_TAG} was not found for this tag-triggered run." >&2
             exit 3
           fi
 
-          if [[ -z "$release_state" ]]; then
-            if git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
-              gh release create "${RELEASE_TAG}" \
-                --verify-tag \
-                --draft \
-                --generate-notes \
-                --title "${RELEASE_TAG}"
-            else
-              gh release create "${RELEASE_TAG}" \
-                --target "${GITHUB_SHA}" \
-                --draft \
-                --generate-notes \
-                --title "${RELEASE_TAG}"
-            fi
-          fi
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${RELEASE_TAG}" \
+            -f "sha=${GITHUB_SHA}" >/dev/null
+          echo "Release tag ${RELEASE_TAG} created at ${GITHUB_SHA}."
 
-          gh release upload "${RELEASE_TAG}" artifacts/release/* --clobber
+      - name: Attest release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/release/*.nupkg
+            artifacts/release/release-manifest.json
+            artifacts/release/SHA256SUMS
 
       - name: Authenticate to NuGet.org with trusted publishing
+        if: "${{ needs.build.outputs.nuget-publishing-enabled == 'true' }}"
         id: nuget-login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: "${{ vars.NUGET_USER }}"
 
       - name: Publish packages to NuGet.org
+        if: "${{ needs.build.outputs.nuget-publishing-enabled == 'true' }}"
         shell: bash
         env:
           NUGET_API_KEY: "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
@@ -575,6 +644,23 @@ jobs:
           IS_PRERELEASE: "${{ needs.build.outputs.is-prerelease }}"
         run: |
           set -euo pipefail
+
+          release_state="$(gh release view "${RELEASE_TAG}" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ "$release_state" == 'false' ]]; then
+            echo "Release ${RELEASE_TAG} is already published; refusing to mutate an immutable release." >&2
+            exit 3
+          fi
+
+          if [[ -z "$release_state" ]]; then
+            gh release create "${RELEASE_TAG}" \
+              artifacts/release/* \
+              --verify-tag \
+              --draft \
+              --generate-notes \
+              --title "${RELEASE_TAG}"
+          else
+            gh release upload "${RELEASE_TAG}" artifacts/release/* --clobber
+          fi
 
           gh release edit "${RELEASE_TAG}" \
             --draft=false \
