@@ -27,9 +27,11 @@
 
   <ItemGroup>
     <Content Include="..\**\*"
-             Exclude="..\.git\**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
+             Exclude="..\.git;../.git;..\.git\**;../.git/**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
              Pack="true"
              PackagePath="content/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Remove="..\.git" />
+    <Content Remove="../.git" />
     <Content Include="..\LICENSE" Pack="true" PackagePath="content/" />
     <None Include="..\README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

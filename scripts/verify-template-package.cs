@@ -136,6 +136,7 @@ var forbiddenPrefixes = new[]
 
 var forbiddenExactEntries = new[]
 {
+    "content/.git",
     "content/.github/workflows/template-package-validation.yml",
     "content/scripts/verify-template-package.cs",
     "content/scripts/validate-template-package-e2e.sh",
