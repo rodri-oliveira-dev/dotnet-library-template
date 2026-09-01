@@ -380,7 +380,7 @@ O fluxo recomendado para uma release manual é:
 
 Pull requests e execuções manuais com `publish=false` apenas constroem e validam o release candidate. Elas não criam tag, não criam GitHub Release, não pedem credencial OIDC do NuGet e não executam `dotnet nuget push`.
 
-Com `publish=true`, o workflow exige `refs/heads/main`, baixa o mesmo candidate validado pelo job de build, verifica versão, tag, commit, manifesto e SHA-256, atesta os artifacts, cria ou retoma um GitHub Release em draft, publica o pacote via NuGet Trusted Publishing/OIDC e somente então finaliza o GitHub Release. Se a publicação NuGet falhar, a release permanece draft e o workflow falha.
+Com `publish=true`, o workflow exige `refs/heads/main`, rejeita uma tag existente conflitante antes do build pesado, baixa o mesmo candidate validado pelo job de build, verifica versão, tag, commit, manifesto e SHA-256, atesta os artifacts, cria ou retoma um GitHub Release em draft, publica o pacote via NuGet Trusted Publishing/OIDC e somente então finaliza o GitHub Release. Se a publicação NuGet falhar, a release permanece draft e o workflow falha.
 
 ### NuGet.org Trusted Publishing
 

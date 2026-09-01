@@ -204,6 +204,7 @@ jobs:
           grep -Fq 'release-manifest.json' "$release"
           grep -Fq 'SHA256SUMS' "$release"
           grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Preflight release tag' "$release"
           grep -Fq 'needs.build.outputs.commit' "$release"
           grep -Fq 'safe-to-publish-library' "$release"
           grep -Fq 'placeholder_package_id="Template"".""Library"' "$release"
@@ -398,12 +399,15 @@ jobs:
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'release-candidate-' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Preflight release tag' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'scripts/release-candidate.cs' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'release-manifest.json' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'SHA256SUMS' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'Create or resume draft GitHub Release' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'needs.build.outputs.commit' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'NuGet publication is skipped because NUGET_USER is not configured.' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq "needs.build.outputs.nuget-publishing-enabled == 'true'" "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
 
           if grep -Eq 'RodriOliveira\.DotNet\.Library\.Template|packaging/|template-package-validation|verify-template-package|validate-template-package-e2e|push:' "$GENERATED_ROOT/.github/workflows/release.yml"; then

@@ -96,6 +96,25 @@ jobs:
         id: release-commit
         run: echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Preflight release tag
+        if: "${{ github.event_name == 'workflow_dispatch' && inputs.publish }}"
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release-metadata.outputs.tag }}
+          VALIDATED_SHA: ${{ steps.release-commit.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" || true
+
+          if git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            existing_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
+            if [[ "${existing_commit}" != "${VALIDATED_SHA}" ]]; then
+              echo "Tag ${RELEASE_TAG} already points to ${existing_commit}, not validated SHA ${VALIDATED_SHA}." >&2
+              exit 2
+            fi
+          fi
+
       - name: Restore local tools
         run: dotnet tool restore
 

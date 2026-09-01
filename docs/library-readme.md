@@ -201,7 +201,7 @@ For the complete configuration and troubleshooting reference, see [docs/sonarqub
 
 Pull requests and manual runs with `publish=false` restore dependencies in locked mode, verify formatting, resolve the requested version through MSBuild, build, test, pack, validate package and assembly metadata, generate `release-manifest.json` and `SHA256SUMS`, and upload a single `release-candidate-<version>` artifact. They do not create tags, create GitHub Releases, request NuGet OIDC credentials, or run `dotnet nuget push`.
 
-With `publish=true`, the workflow requires `refs/heads/main`, downloads the same candidate validated by the build job, verifies version, tag, commit, manifest, and SHA-256 checksums, attests the artifacts, creates or resumes a draft GitHub Release, publishes the package through NuGet Trusted Publishing/OIDC, and only then finalizes the GitHub Release. If NuGet publication fails, the release remains draft and the workflow fails.
+With `publish=true`, the workflow requires `refs/heads/main`, rejects a conflicting existing tag before the expensive build, downloads the same candidate validated by the build job, verifies version, tag, commit, manifest, and SHA-256 checksums, attests the artifacts, creates or resumes a draft GitHub Release, and finalizes it only after all enabled publication steps succeed. If NuGet publication is enabled and fails, the release remains draft and the workflow fails.
 
 ### NuGet publication opt-in
 
@@ -216,7 +216,7 @@ AND NUGET_USER is configured and non-empty
 
 When the gate is true, the workflow exchanges a GitHub OIDC token through `NuGet/login@v1`, publishes the validated `.nupkg` to NuGet.org, and finalizes the GitHub Release after publication succeeds.
 
-When `NUGET_USER` is absent, empty, or contains only whitespace, `publish=false` still works as validation. With `publish=true`, the workflow fails before external authentication because an official publication must be able to publish the validated package.
+When `NUGET_USER` is absent, empty, or contains only whitespace, the workflow skips NuGet login and `dotnet nuget push`. `publish=false` still works as validation, and `publish=true` can still create and finalize the validated GitHub Release without NuGet.org publication.
 
 ### Configure `NUGET_USER` in GitHub
 
@@ -236,7 +236,7 @@ When `NUGET_USER` is absent, empty, or contains only whitespace, `publish=false`
 7. Set **Value** to the nuget.org profile name/username that owns or publishes the package and is referenced by the Trusted Publishing setup.
 8. Save the variable.
 
-If you do not want this repository to publish to NuGet.org, leave `NUGET_USER` undefined and keep release workflow runs at `publish=false`. No dummy value is required.
+If you do not want this repository to publish to NuGet.org, leave `NUGET_USER` undefined. The release workflow can still publish GitHub Releases with `publish=true`; no dummy value is required.
 
 ### Configure NuGet.org Trusted Publishing
 
@@ -256,7 +256,7 @@ To enable NuGet publication:
 
 `NUGET_USER` is both the nuget.org profile name used by Trusted Publishing and one part of the explicit NuGet publication gate. A repository can validate release candidates without defining it.
 
-The workflow creates or resumes a draft GitHub Release before NuGet publication and finalizes it only after NuGet succeeds. If NuGet authentication or publication fails after publication has been enabled, the draft remains draft, preventing the repository from advertising a NuGet publication that did not complete.
+The workflow creates or resumes a draft GitHub Release before any enabled NuGet publication and finalizes it only after NuGet succeeds or after NuGet is skipped because it is not configured. If NuGet authentication or publication fails after publication has been enabled, the draft remains draft, preventing the repository from advertising a NuGet publication that did not complete.
 
 ## Repository structure
 

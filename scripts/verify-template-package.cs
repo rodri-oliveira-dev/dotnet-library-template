@@ -143,12 +143,14 @@ using (var generatedReleaseReader = new StreamReader(generatedReleaseEntry.Open(
     var generatedRelease = generatedReleaseReader.ReadToEnd();
     AssertStringContains(generatedRelease, "workflow_dispatch:", "generated release workflow_dispatch");
     AssertStringContains(generatedRelease, "publish:", "generated release publish input");
+    AssertStringContains(generatedRelease, "Preflight release tag", "generated release tag preflight");
     AssertStringContains(generatedRelease, "release-candidate-${{ steps.release-metadata.outputs.version }}", "generated release candidate artifact");
     AssertStringContains(generatedRelease, "scripts/release-candidate.cs", "generated release candidate helper");
     AssertStringContains(generatedRelease, "release-manifest.json", "generated release manifest");
     AssertStringContains(generatedRelease, "SHA256SUMS", "generated release checksums");
     AssertStringContains(generatedRelease, "actions/attest@", "generated release attestation");
     AssertStringContains(generatedRelease, "NuGet/login@8d196754b4036150537f80ac539e15c2f1028841", "generated NuGet Trusted Publishing");
+    AssertStringContains(generatedRelease, "needs.build.outputs.nuget-publishing-enabled == 'true'", "generated optional NuGet publishing gate");
 
     AssertStringDoesNotContain(generatedRelease, "RodriOliveira.DotNet.Library.Template", "generated release template PackageId");
     AssertStringDoesNotContain(generatedRelease, "packaging/", "generated release packaging path");

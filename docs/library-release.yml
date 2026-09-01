@@ -86,6 +86,25 @@ jobs:
         id: release-commit
         run: echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Preflight release tag
+        if: "${{ github.event_name == 'workflow_dispatch' && inputs.publish }}"
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release-metadata.outputs.tag }}
+          VALIDATED_SHA: ${{ steps.release-commit.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" || true
+
+          if git show-ref --tags --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            existing_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
+            if [[ "${existing_commit}" != "${VALIDATED_SHA}" ]]; then
+              echo "Tag ${RELEASE_TAG} already points to ${existing_commit}, not validated SHA ${VALIDATED_SHA}." >&2
+              exit 2
+            fi
+          fi
+
       - name: Restore local tools
         run: dotnet tool restore
 
@@ -251,8 +270,7 @@ jobs:
           fi
 
           if [[ "$NUGET_PUBLISHING_ENABLED" != "true" ]]; then
-            echo "Official publication requires NUGET_USER and a publishable package." >&2
-            exit 2
+            echo "NuGet publication is skipped because NUGET_USER is not configured."
           fi
 
           if [[ "$VALIDATED_SHA" != "$GITHUB_SHA" ]]; then
@@ -361,12 +379,14 @@ jobs:
             --clobber
 
       - name: Authenticate to NuGet.org with Trusted Publishing
+        if: "${{ needs.build.outputs.nuget-publishing-enabled == 'true' }}"
         id: nuget-login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ vars.NUGET_USER }}
 
       - name: Publish package to NuGet.org
+        if: "${{ needs.build.outputs.nuget-publishing-enabled == 'true' }}"
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           PACKAGE_ID: ${{ needs.build.outputs.package-id }}
