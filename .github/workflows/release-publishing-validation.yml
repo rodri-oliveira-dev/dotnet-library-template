@@ -38,11 +38,17 @@ jobs:
           request_resolver='scripts/resolve-release-request.sh'
           tag_guard='scripts/ensure-release-tag.sh'
           nuget_resolver='scripts/resolve-nuget-publishing.sh'
+          template_package='packaging/RodriOliveira.DotNet.Library.Template.csproj'
+          template_verifier='scripts/verify-template-package.cs'
+          template_e2e='scripts/validate-template-package-e2e.sh'
 
           test -s "$release"
           test -s "$request_resolver"
           test -s "$tag_guard"
           test -s "$nuget_resolver"
+          test -s "$template_package"
+          test -s "$template_verifier"
+          test -s "$template_e2e"
 
           grep -Fq "description: 'Release version" "$release"
           grep -Fq 'Validate release request' "$release"
@@ -55,6 +61,18 @@ jobs:
           grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
           grep -Fq 'nuget-publishing-enabled:' "$release"
           grep -Fq 'steps.nuget-publishing.outputs.nuget_publishing_enabled' "$release"
+          grep -Fq 'template-package-available:' "$release"
+          grep -Fq 'Detect template package project' "$release"
+          grep -Fq 'packaging/RodriOliveira.DotNet.Library.Template.csproj' "$release"
+          grep -Fq 'RodriOliveira.DotNet.Library.Template' "$release"
+          grep -Fq "package_type\" != 'Template'" "$release"
+          grep -Fq 'TEMPLATE_PACKAGE_AVAILABLE:' "$release"
+          grep -Fq 'Pack template package' "$release"
+          grep -Fq 'artifacts/templates' "$release"
+          grep -Fq 'scripts/verify-template-package.cs' "$release"
+          grep -Fq 'scripts/validate-template-package-e2e.sh' "$release"
+          grep -Fq 'Upload template package artifact' "$release"
+          grep -Fq 'template-package' "$release"
           grep -Fq 'Resolve NuGet publishing opt-in' "$release"
           grep -Fq 'NUGET_USER:' "$release"
           grep -Fq 'vars.NUGET_USER' "$release"
@@ -63,22 +81,33 @@ jobs:
           grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
           grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
           grep -Fq "needs.publish-nuget.result == 'success'" "$release"
-          grep -Fq 'Create GitHub Release with package artifacts' "$release"
-          grep -Fq 'Create source-template GitHub Release without package artifacts' "$release"
+          grep -Fq 'Create GitHub Release' "$release"
+          grep -Fq 'Download generated library package artifacts' "$release"
           grep -Fq 'GH_REPO:' "$release"
           grep -Fq 'github.repository' "$release"
           grep -Fq -- '--repo "$GH_REPO"' "$release"
           grep -Fq 'id-token: write' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
           grep -Fq 'dotnet nuget push' "$release"
+          grep -Fq 'artifacts/packages/${LIBRARY_PACKAGE_ID}.${PACKAGE_VERSION}.nupkg' "$release"
+          grep -Fq 'artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg' "$release"
 
           if grep -Fq 'workflow_dispatch is dry-run' "$release" "$nuget_resolver"; then
             echo 'workflow_dispatch must be a real release path, not a dry run.'
             exit 1
           fi
 
-          if grep -Eq 'secrets\.NUGET_API_KEY|write-all' "$release"; then
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|artifacts/\*\*/\*.nupkg' "$release"; then
             echo 'Persistent NuGet credentials or broad permissions are not allowed.'
+            exit 1
+          fi
+
+          id_token_jobs="$(awk '
+            /^[[:space:]]{2}[A-Za-z0-9_-]+:$/ { job=$1; sub(":", "", job) }
+            /id-token:[[:space:]]write/ { print job }
+          ' "$release")"
+          if [ "$id_token_jobs" != 'publish-nuget' ]; then
+            echo "id-token: write deve existir somente no job publish-nuget, obtido: $id_token_jobs"
             exit 1
           fi
 
@@ -92,19 +121,22 @@ jobs:
             expected_reason="$2"
             should_publish="$3"
             safe_to_publish="$4"
-            user_mode="$5"
-            user_value="${6:-}"
+            template_package_available="$5"
+            user_mode="$6"
+            user_value="${7:-}"
             output="$(mktemp)"
 
             if [ "$user_mode" = 'absent' ]; then
               env -u NUGET_USER \
                 SHOULD_PUBLISH="$should_publish" \
                 SAFE_TO_PUBLISH="$safe_to_publish" \
+                TEMPLATE_PACKAGE_AVAILABLE="$template_package_available" \
                 GITHUB_OUTPUT="$output" \
                 bash "$resolver"
             else
               SHOULD_PUBLISH="$should_publish" \
                 SAFE_TO_PUBLISH="$safe_to_publish" \
+                TEMPLATE_PACKAGE_AVAILABLE="$template_package_available" \
                 NUGET_USER="$user_value" \
                 GITHUB_OUTPUT="$output" \
                 bash "$resolver"
@@ -115,12 +147,14 @@ jobs:
             rm -f "$output"
           }
 
-          assert_decision false nuget-user-not-configured true true absent
-          assert_decision false nuget-user-not-configured true true configured ''
-          assert_decision false nuget-user-not-configured true true configured '   '
-          assert_decision true enabled true true configured 'nuget-profile'
-          assert_decision false placeholder-package true false configured 'nuget-profile'
-          assert_decision false release-disabled false true configured 'nuget-profile'
+          assert_decision false nuget-user-not-configured true true false absent
+          assert_decision false nuget-user-not-configured true true false configured ''
+          assert_decision false nuget-user-not-configured true true false configured '   '
+          assert_decision true enabled true true false configured 'nuget-profile'
+          assert_decision false placeholder-package true false false configured 'nuget-profile'
+          assert_decision true enabled true false true configured 'nuget-profile'
+          assert_decision false nuget-user-not-configured true false true absent
+          assert_decision false release-disabled false true true configured 'nuget-profile'
 
       - name: Validate manual release request rules
         shell: bash
@@ -301,6 +335,7 @@ jobs:
           grep -Fq 'run: bash scripts/resolve-release-request.sh' "$release"
           grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
           grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
+          grep -Fq 'template-package-available:' "$release"
           grep -Fq 'GH_REPO:' "$release"
           grep -Fq 'github.repository' "$release"
           grep -Fq -- '--repo "$GH_REPO"' "$release"
@@ -311,6 +346,7 @@ jobs:
           output="$(mktemp)"
           SHOULD_PUBLISH=true \
             SAFE_TO_PUBLISH=true \
+            TEMPLATE_PACKAGE_AVAILABLE=false \
             NUGET_USER='' \
             GITHUB_OUTPUT="$output" \
             bash "$nuget_resolver"
@@ -321,6 +357,18 @@ jobs:
 
           if [ -e "$GENERATED_ROOT/.github/workflows/release-publishing-validation.yml" ]; then
             echo 'Maintenance-only release publishing validation leaked into generated output.'
+            exit 1
+          fi
+
+          if [ -e "$GENERATED_ROOT/packaging" ]; then
+            echo 'Template-package packaging project leaked into generated output.'
+            exit 1
+          fi
+
+          if [ -e "$GENERATED_ROOT/.github/workflows/template-package-validation.yml" ] ||
+             [ -e "$GENERATED_ROOT/scripts/verify-template-package.cs" ] ||
+             [ -e "$GENERATED_ROOT/scripts/validate-template-package-e2e.sh" ]; then
+            echo 'Template-package maintenance assets leaked into generated output.'
             exit 1
           fi
 

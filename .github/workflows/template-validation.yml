@@ -336,11 +336,15 @@ jobs:
             ".github/workflows/versioning-validation.yml"
             ".github/workflows/release-publishing-validation.yml"
             ".github/workflows/github-template-initialization-validation.yml"
+            ".github/workflows/template-package-validation.yml"
+            "packaging/RodriOliveira.DotNet.Library.Template.csproj"
             "docs/template-development.md"
             "docs/repository-administration.md"
             "docs/library-readme.md"
             "README.en.md"
             "scripts/initialize-repository.sh"
+            "scripts/verify-template-package.cs"
+            "scripts/validate-template-package-e2e.sh"
           )
 
           for path in "${maintenance_only[@]}"; do

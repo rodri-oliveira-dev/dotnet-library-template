@@ -68,7 +68,11 @@ jobs:
 
           grep -Fq '.github/workflows/initialize-repository.yml' "$template"
           grep -Fq '.github/workflows/github-template-initialization-validation.yml' "$template"
+          grep -Fq '.github/workflows/template-package-validation.yml' "$template"
+          grep -Fq 'packaging/**' "$template"
           grep -Fq 'scripts/initialize-repository.sh' "$template"
+          grep -Fq 'scripts/verify-template-package.cs' "$template"
+          grep -Fq 'scripts/validate-template-package-e2e.sh' "$template"
 
       - name: Validate initializer safety guards
         shell: bash
@@ -183,11 +187,15 @@ jobs:
             '.github/workflows/versioning-validation.yml'
             '.github/workflows/release-publishing-validation.yml'
             '.github/workflows/github-template-initialization-validation.yml'
+            '.github/workflows/template-package-validation.yml'
+            'packaging'
             'docs/template-development.md'
             'docs/repository-administration.md'
             'docs/library-readme.md'
             'README.en.md'
             'scripts/initialize-repository.sh'
+            'scripts/verify-template-package.cs'
+            'scripts/validate-template-package-e2e.sh'
           )
 
           for path in "${required[@]}"; do

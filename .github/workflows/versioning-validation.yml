@@ -63,6 +63,12 @@ jobs:
             exit 1
           fi
 
+          template_project='packaging/RodriOliveira.DotNet.Library.Template.csproj'
+          test -s "$template_project"
+          test "$(dotnet msbuild "$template_project" -nologo -getProperty:Version | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)" = '1.0.0'
+          test "$(dotnet msbuild "$template_project" -nologo -getProperty:PackageVersion | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)" = '1.0.0'
+          test "$(dotnet msbuild "$template_project" -nologo -getProperty:PackageType | tr -d '\r' | sed '/^[[:space:]]*$/d' | tail -n 1)" = 'Template'
+
       - name: Compilar versão base 1.0.0
         run: dotnet build Template.Library.slnx --configuration Release --no-restore
 
@@ -102,6 +108,10 @@ jobs:
           test -s "$GENERATED_ROOT/scripts/resolve-release-request.sh"
           test -s "$GENERATED_ROOT/scripts/ensure-release-tag.sh"
           test ! -e "$GENERATED_ROOT/.github/workflows/versioning-validation.yml"
+          test ! -e "$GENERATED_ROOT/packaging"
+          test ! -e "$GENERATED_ROOT/.github/workflows/template-package-validation.yml"
+          test ! -e "$GENERATED_ROOT/scripts/verify-template-package.cs"
+          test ! -e "$GENERATED_ROOT/scripts/validate-template-package-e2e.sh"
 
           release="$GENERATED_ROOT/.github/workflows/release.yml"
 
@@ -116,15 +126,10 @@ jobs:
           grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
           grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
           grep -Fq "needs.publish-nuget.result == 'success'" "$release"
-          grep -Fq 'Create GitHub Release with package artifacts' "$release"
-          grep -Fq 'Create source-template GitHub Release without package artifacts' "$release"
-          grep -Fq 'Download package artifacts' "$release"
-
-          source_block="$(awk '/Create source-template GitHub Release without package artifacts/{capture=1} capture{print}' "$release")"
-          if grep -Fq 'artifacts/packages/' <<<"$source_block"; then
-            echo 'A rota de GitHub Release do placeholder não deve anexar pacotes.'
-            exit 1
-          fi
+          grep -Fq 'Create GitHub Release' "$release"
+          grep -Fq 'Download generated library package artifacts' "$release"
+          grep -Fq 'SAFE_TO_PUBLISH:' "$release"
+          grep -Fq 'TEMPLATE_PACKAGE_AVAILABLE:' "$release"
 
           if grep -Fq -- '-p:PackageVersion=' "$release"; then
             echo 'release.yml não deve manter um segundo override de PackageVersion.'

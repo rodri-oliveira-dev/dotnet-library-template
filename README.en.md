@@ -14,24 +14,22 @@ The goal is not to prescribe a domain architecture. The template provides a **pr
 
 ## Choose how to use the template
 
-Two supported flows are available:
+Three supported flows are available:
 
 | Flow | When to use it | Automatically renames `Template.Library`? |
 | --- | --- | --- |
-| [`dotnet new`](#recommended-option--dotnet-new) | When you want a new library generated with its own identity | Yes |
-| [GitHub Template Repository](#alternative--github-template-repository) | When you want to create the GitHub repository first and initialize it through Actions | Yes, after the `Initialize repository` workflow |
+| [NuGet + `dotnet new`](#recommended-option--nuget--dotnet-new) | Recommended CLI consumer flow | Yes |
+| [GitHub Template Repository](#alternative--github-template-repository) | Recommended flow when you want to create the GitHub repository first and initialize it through Actions | Yes, after the `Initialize repository` workflow |
+| [Clone + local install](#maintainer-flow--clone--local-install) | Template maintenance, template development, local tests, and contribution | Yes |
 
-For most new projects, prefer **`dotnet new`**.
+For most new CLI projects, prefer **NuGet + `dotnet new`**.
 
 ## Quick Start
 
-Recommended flow for generating a library locally:
+Recommended CLI consumer flow:
 
 ```bash
-git clone https://github.com/rodri-oliveira-dev/dotnet-library-template.git
-cd dotnet-library-template
-
-dotnet new install .
+dotnet new install RodriOliveira.DotNet.Library.Template
 dotnet new list rodri-lib
 
 dotnet new rodri-lib -n MyCompany.MyLibrary
@@ -84,6 +82,8 @@ This path runs the .NET template engine, creates the `MyCompany.MyLibrary/` dire
 - manual tag creation only after build, tests, pack, and package validation succeed;
 - NuGet.org Trusted Publishing through GitHub OIDC with `NUGET_USER` as an explicit publication opt-in;
 - GitHub Release creation independent from NuGet enablement.
+- public NuGet Template Package `RodriOliveira.DotNet.Library.Template`, separate from the `Template.Library` placeholder package;
+- validation of the real template `.nupkg` before publication, including install, generation, and parity comparison against the local template.
 
 ### Security and governance
 
@@ -110,16 +110,25 @@ Confirm the installed SDK:
 dotnet --version
 ```
 
-## Recommended option — `dotnet new`
+## Recommended option — NuGet + `dotnet new`
 
-Clone this repository and install the template from its root:
+Install the public template package:
 
 ```bash
-git clone https://github.com/rodri-oliveira-dev/dotnet-library-template.git
-cd dotnet-library-template
-
-dotnet new install .
+dotnet new install RodriOliveira.DotNet.Library.Template
 dotnet new list rodri-lib
+```
+
+To update or reinstall the template, run the install command again:
+
+```bash
+dotnet new install RodriOliveira.DotNet.Library.Template
+```
+
+When you need exact reproducibility across machines or builds, install a specific version:
+
+```bash
+dotnet new install RodriOliveira.DotNet.Library.Template@1.2.0
 ```
 
 Generate a library:
@@ -154,14 +163,32 @@ dotnet pack src/MyCompany.MyLibrary/MyCompany.MyLibrary.csproj \
 
 Without a release override, the package uses the base version `1.0.0`.
 
-When local template testing is complete:
+When you no longer need the installed template:
 
 ```bash
-cd ..
-dotnet new uninstall .
+dotnet new uninstall RodriOliveira.DotNet.Library.Template
 ```
 
 Template evolution and validation details are documented in [docs/template-development.md](docs/template-development.md).
+
+## Maintainer flow — clone + local install
+
+For template maintenance, template development, local validation, or contribution, clone this repository and install the template directly from the checkout:
+
+```bash
+git clone https://github.com/rodri-oliveira-dev/dotnet-library-template.git
+cd dotnet-library-template
+
+dotnet new install .
+dotnet new list rodri-lib
+dotnet new rodri-lib -n MyCompany.MyLibrary
+```
+
+When finished:
+
+```bash
+dotnet new uninstall .
+```
 
 ## Alternative — GitHub Template Repository
 
@@ -416,6 +443,7 @@ The main workflows have separate responsibilities:
 | `sonar.yml` | optional SonarQube Cloud analysis |
 | `release.yml` | validation, release-tag creation/verification, optional NuGet publication, and GitHub Release |
 | `template-validation.yml` | end-to-end `dotnet new` validation |
+| `template-package-validation.yml` | maintenance-only validation of the real NuGet Template Package |
 | `sonar-template-validation.yml` | validates the Sonar contract in generated output |
 | `versioning-validation.yml` | validates the SemVer and package/assembly metadata contract |
 | `release-publishing-validation.yml` | maintenance-only validation of release requests, tag handling, and NuGet opt-in |
@@ -472,8 +500,10 @@ Most of the baseline is copied into generated projects: code, tests, build polic
 Template-maintenance-only content is excluded, including:
 
 - `.template.config/**`;
+- `packaging/**`;
 - the GitHub Template Repository initialization workflow and helper;
 - template-only validation workflows;
+- NuGet Template Package validation workflow and scripts;
 - `docs/template-development.md`;
 - `docs/repository-administration.md`;
 - this repository's `README.md` and `README.en.md`.
@@ -499,6 +529,8 @@ Template-maintenance-only content is excluded, including:
 │   ├── resolve-nuget-publishing.sh
 │   ├── resolve-release-request.sh
 │   └── verify-package.cs
+├── packaging/
+│   └── RodriOliveira.DotNet.Library.Template.csproj
 ├── src/
 │   └── Template.Library/
 ├── tests/

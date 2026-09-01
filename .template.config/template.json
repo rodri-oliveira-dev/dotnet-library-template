@@ -26,19 +26,25 @@
         ".template.config/**",
         ".validation/**",
         "artifacts/**",
+        "TestResults/**",
+        "**/TestResults/**",
         "**/*.filelist",
         "**/*.user",
         "README.md",
         "README.en.md",
         "docs/template-development.md",
         "docs/repository-administration.md",
+        "packaging/**",
+        ".github/workflows/template-package-validation.yml",
         ".github/workflows/initialize-repository.yml",
         ".github/workflows/template-validation.yml",
         ".github/workflows/sonar-template-validation.yml",
         ".github/workflows/versioning-validation.yml",
         ".github/workflows/release-publishing-validation.yml",
         ".github/workflows/github-template-initialization-validation.yml",
-        "scripts/initialize-repository.sh"
+        "scripts/initialize-repository.sh",
+        "scripts/verify-template-package.cs",
+        "scripts/validate-template-package-e2e.sh"
       ],
       "rename": {
         "docs/library-readme.md": "README.md"
