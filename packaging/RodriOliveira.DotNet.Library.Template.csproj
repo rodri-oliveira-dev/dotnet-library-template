@@ -52,8 +52,8 @@
              Pack="true"
              PackagePath="content/" />
 
-    <!-- NuGet.org README -->
-    <None Include="..\README.md"
+    <!-- NuGet package README -->
+    <None Include="README.md"
           Pack="true"
           PackagePath="/" />
 
