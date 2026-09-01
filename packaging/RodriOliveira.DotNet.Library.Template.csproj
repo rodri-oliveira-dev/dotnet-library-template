@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>RodriOliveira.DotNet.Library.Template</PackageId>
+    <PackageType>Template</PackageType>
+    <Title>Rodrigo Oliveira .NET Library Template</Title>
+    <Authors>Rodrigo de Oliveira</Authors>
+    <Description>Installs the rodri-lib dotnet new template for reusable .NET library projects.</Description>
+    <PackageTags>dotnet;template;library;csharp;nuget;dotnet-new</PackageTags>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <NoBuild>true</NoBuild>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\**\*"
+             Exclude="..\.git\**;..\artifacts\**;..\packaging\**;..\**\bin\**;..\**\Bin\**;..\**\obj\**;..\**\Obj\**;..\TestResults\**;..\**\TestResults\**;..\.vs\**;..\.idea\**;..\.dotnet\**;..\.dotnet-home\**;..\.nuget\**;..\packages\**;..\**\*.nupkg;..\**\*.snupkg;..\**\*.user;..\**\*.suo;..\**\*.binlog;..\LICENSE;..\.github\workflows\template-package-validation.yml;..\scripts\verify-template-package.cs;..\scripts\validate-template-package-e2e.sh"
+             Pack="true"
+             PackagePath="content\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\LICENSE" Pack="true" PackagePath="content\" />
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

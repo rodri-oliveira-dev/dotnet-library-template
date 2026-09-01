@@ -26,7 +26,9 @@ jobs:
       release-tag: ${{ steps.version.outputs.release_tag }}
       should-publish: ${{ steps.version.outputs.should_publish }}
       is-manual-release: ${{ steps.version.outputs.is_manual_release }}
+      library-package-id: ${{ steps.package.outputs.package_id }}
       safe-to-publish: ${{ steps.package.outputs.safe_to_publish }}
+      template-package-available: ${{ steps.template-package.outputs.template_package_available }}
       nuget-publishing-enabled: ${{ steps.nuget-publishing.outputs.nuget_publishing_enabled }}
       nuget-publishing-reason: ${{ steps.nuget-publishing.outputs.nuget_publishing_reason }}
 
@@ -85,12 +87,56 @@ jobs:
           echo "package_id=$package_id" >> "$GITHUB_OUTPUT"
           echo "safe_to_publish=$safe_to_publish" >> "$GITHUB_OUTPUT"
 
+      - name: Detect template package project
+        id: template-package
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: |
+          project='packaging/RodriOliveira.DotNet.Library.Template.csproj'
+          template_package_available=false
+
+          if [ -f "$project" ]; then
+            package_id="$(dotnet msbuild "$project" -nologo -getProperty:PackageId -p:Version="$PACKAGE_VERSION" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1)"
+            package_type="$(dotnet msbuild "$project" -nologo -getProperty:PackageType -p:Version="$PACKAGE_VERSION" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1)"
+            resolved_version="$(dotnet msbuild "$project" -nologo -getProperty:Version -p:Version="$PACKAGE_VERSION" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1)"
+
+            if [ "$package_id" != 'RodriOliveira.DotNet.Library.Template' ]; then
+              echo "::error::Unexpected template package id '$package_id'."
+              exit 1
+            fi
+
+            if [ "$package_type" != 'Template' ]; then
+              echo "::error::Unexpected template package type '$package_type'."
+              exit 1
+            fi
+
+            if [ "$resolved_version" != "$PACKAGE_VERSION" ]; then
+              echo "::error::Template package Version '$resolved_version' differs from release version '$PACKAGE_VERSION'."
+              exit 1
+            fi
+
+            template_package_available=true
+          fi
+
+          echo "template_package_available=$template_package_available" >> "$GITHUB_OUTPUT"
+
       - name: Resolve NuGet publishing opt-in
         id: nuget-publishing
         shell: bash
         env:
           SHOULD_PUBLISH: ${{ steps.version.outputs.should_publish }}
           SAFE_TO_PUBLISH: ${{ steps.package.outputs.safe_to_publish }}
+          TEMPLATE_PACKAGE_AVAILABLE: ${{ steps.template-package.outputs.template_package_available }}
           NUGET_USER: ${{ vars.NUGET_USER }}
         run: bash scripts/resolve-nuget-publishing.sh
 
@@ -146,6 +192,33 @@ jobs:
           --require-source-link
           --expected-version "$PACKAGE_VERSION"
 
+      - name: Pack template package
+        if: ${{ steps.template-package.outputs.template_package_available == 'true' }}
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj
+          --configuration Release
+          --output artifacts/templates
+          -p:Version="$PACKAGE_VERSION"
+
+      - name: Validate template package contents
+        if: ${{ steps.template-package.outputs.template_package_available == 'true' }}
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet run --file scripts/verify-template-package.cs -- artifacts/templates
+          --expected-version "$PACKAGE_VERSION"
+
+      - name: Validate template package install and parity
+        if: ${{ steps.template-package.outputs.template_package_available == 'true' }}
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          bash scripts/validate-template-package-e2e.sh
+          "artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg"
+          "$GITHUB_WORKSPACE"
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -153,6 +226,15 @@ jobs:
           path: |
             artifacts/packages/*.nupkg
             artifacts/packages/*.snupkg
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload template package artifact
+        if: ${{ steps.template-package.outputs.template_package_available == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: template-package
+          path: artifacts/templates/RodriOliveira.DotNet.Library.Template.*.nupkg
           if-no-files-found: error
           retention-days: 7
 
@@ -195,10 +277,18 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Download release artifacts
+        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-packages
           path: artifacts/packages
+
+      - name: Download template package artifact
+        if: ${{ needs.build-and-pack.outputs.template-package-available == 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: template-package
+          path: artifacts/templates
 
       - name: Exchange GitHub OIDC token for temporary NuGet API key
         id: nuget-login
@@ -206,11 +296,25 @@ jobs:
         with:
           user: ${{ vars.NUGET_USER }}
 
-      - name: Publish package and symbols
+      - name: Publish generated library package and symbols
+        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          LIBRARY_PACKAGE_ID: ${{ needs.build-and-pack.outputs.library-package-id }}
+          PACKAGE_VERSION: ${{ needs.build-and-pack.outputs.package-version }}
         run: >-
-          dotnet nuget push "artifacts/packages/*.nupkg"
+          dotnet nuget push "artifacts/packages/${LIBRARY_PACKAGE_ID}.${PACKAGE_VERSION}.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key "$NUGET_API_KEY"
+          --skip-duplicate
+
+      - name: Publish template package
+        if: ${{ needs.build-and-pack.outputs.template-package-available == 'true' }}
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          PACKAGE_VERSION: ${{ needs.build-and-pack.outputs.package-version }}
+        run: >-
+          dotnet nuget push "artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg"
           --source https://api.nuget.org/v3/index.json
           --api-key "$NUGET_API_KEY"
           --skip-duplicate
@@ -234,19 +338,29 @@ jobs:
       contents: write
 
     steps:
-      - name: Download package artifacts
+      - name: Download generated library package artifacts
         if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-packages
           path: artifacts/packages
 
-      - name: Create GitHub Release with package artifacts
-        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'true' }}
+      - name: Download template package artifact
+        if: ${{ needs.build-and-pack.outputs.template-package-available == 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: template-package
+          path: artifacts/templates
+
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
+          PACKAGE_VERSION: ${{ needs.build-and-pack.outputs.package-version }}
+          LIBRARY_PACKAGE_ID: ${{ needs.build-and-pack.outputs.library-package-id }}
+          SAFE_TO_PUBLISH: ${{ needs.build-and-pack.outputs.safe-to-publish }}
+          TEMPLATE_PACKAGE_AVAILABLE: ${{ needs.build-and-pack.outputs.template-package-available }}
         shell: bash
         run: |
           release_args=(--verify-tag --generate-notes --title "$RELEASE_TAG")
@@ -254,23 +368,20 @@ jobs:
             release_args+=(--prerelease)
           fi
 
-          gh release create "$RELEASE_TAG" \
-            --repo "$GH_REPO" \
-            artifacts/packages/*.nupkg \
-            artifacts/packages/*.snupkg \
-            "${release_args[@]}"
-
-      - name: Create source-template GitHub Release without package artifacts
-        if: ${{ needs.build-and-pack.outputs.safe-to-publish == 'false' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.build-and-pack.outputs.release-tag }}
-        shell: bash
-        run: |
-          release_args=(--verify-tag --generate-notes --title "$RELEASE_TAG")
-          if [[ "$RELEASE_TAG" == *-* ]]; then
-            release_args+=(--prerelease)
+          assets=()
+          if [[ "$SAFE_TO_PUBLISH" == 'true' ]]; then
+            assets+=(
+              "artifacts/packages/${LIBRARY_PACKAGE_ID}.${PACKAGE_VERSION}.nupkg"
+              "artifacts/packages/${LIBRARY_PACKAGE_ID}.${PACKAGE_VERSION}.snupkg"
+            )
           fi
 
-          gh release create "$RELEASE_TAG" --repo "$GH_REPO" "${release_args[@]}"
+          if [[ "$TEMPLATE_PACKAGE_AVAILABLE" == 'true' ]]; then
+            assets+=("artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg")
+          fi
+
+          if (( ${#assets[@]} > 0 )); then
+            gh release create "$RELEASE_TAG" --repo "$GH_REPO" "${assets[@]}" "${release_args[@]}"
+          else
+            gh release create "$RELEASE_TAG" --repo "$GH_REPO" "${release_args[@]}"
+          fi

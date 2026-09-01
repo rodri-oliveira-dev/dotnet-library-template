@@ -25,11 +25,68 @@ The stable identifiers are:
 - identity: `RodriOliveira.DotNet.Library`;
 - short name: `rodri-lib`;
 - source name: `Template.Library`;
+- NuGet template package: `RodriOliveira.DotNet.Library.Template`;
 - target framework baseline: `net10.0`;
-- SDK feature band: `10.0.303` with `latestFeature` roll-forward;
+- SDK feature band: `10.0.400` with `latestFeature` roll-forward;
 - base development version: `1.0.0`.
 
 Keep the parameter surface intentionally small. Add a new parameter only when there is a concrete reusable need and an automated generation test for it.
+
+## NuGet Template Package architecture
+
+The distributable CLI template is packaged by:
+
+```text
+packaging/RodriOliveira.DotNet.Library.Template.csproj
+```
+
+That project is maintenance-only. It produces a content-only NuGet Template Package with:
+
+```text
+PackageId   = RodriOliveira.DotNet.Library.Template
+PackageType = Template
+```
+
+It does not produce or package runtime assemblies. The package contains the real `.template.config/template.json` and the repository template content needed by the .NET template engine. Do not copy `sourceName`, `rename`, `exclude`, or `preferNameDirectory` behavior into packaging scripts; `.template.config/template.json` remains the source of truth for generated output.
+
+The package project inherits the repository version from `Directory.Build.props` for local builds. Release workflows pass the tag-derived version through the same `-p:Version=<version>` override used by the generated library package:
+
+```text
+v1.2.0        -> Version 1.2.0        -> RodriOliveira.DotNet.Library.Template.1.2.0.nupkg
+v1.3.0-beta.1 -> Version 1.3.0-beta.1 -> RodriOliveira.DotNet.Library.Template.1.3.0-beta.1.nupkg
+```
+
+Do not introduce `TemplatePackageVersion`, project-level `Version`, or a separate `PackageVersion` source.
+
+To build and inspect the template package locally:
+
+```bash
+dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj \
+  --configuration Release \
+  --output artifacts/templates
+
+dotnet run --file scripts/verify-template-package.cs -- artifacts/templates \
+  --expected-version 1.0.0
+```
+
+To install and validate the produced artifact end to end:
+
+```bash
+dotnet new install artifacts/templates/RodriOliveira.DotNet.Library.Template.1.0.0.nupkg
+dotnet new list rodri-lib
+dotnet new rodri-lib -n Validation.SampleLibrary -o artifacts/template-package-e2e/Validation.SampleLibrary
+dotnet new uninstall RodriOliveira.DotNet.Library.Template
+```
+
+The maintained E2E helper also compares generation from the `.nupkg` with generation from the repository path:
+
+```bash
+bash scripts/validate-template-package-e2e.sh \
+  artifacts/templates/RodriOliveira.DotNet.Library.Template.1.0.0.nupkg \
+  "$PWD"
+```
+
+That helper validates fresh install, `dotnet new list rodri-lib`, generation, uninstall, reinstall, parity against local template installation, generated-project locked restore, format verification, Release build, tests, package verification, and Source Link. It intentionally installs the actual `.nupkg`, not just the repository path.
 
 ## Generated content versus maintenance-only content
 
@@ -38,8 +95,10 @@ Most versioned files belong in generated libraries: source, tests, shared build/
 The following content exists only to maintain the source template and is excluded from `dotnet new` output:
 
 - `.template.config/**`;
+- `packaging/**`;
 - `.github/workflows/initialize-repository.yml`;
 - `.github/workflows/template-validation.yml`;
+- `.github/workflows/template-package-validation.yml`;
 - `.github/workflows/sonar-template-validation.yml`;
 - `.github/workflows/versioning-validation.yml`;
 - `.github/workflows/release-publishing-validation.yml`;
@@ -47,6 +106,8 @@ The following content exists only to maintain the source template and is exclude
 - `docs/template-development.md`;
 - `docs/repository-administration.md`;
 - `scripts/initialize-repository.sh`;
+- `scripts/verify-template-package.cs`;
+- `scripts/validate-template-package-e2e.sh`;
 - the template repository `README.md` and `README.en.md`.
 
 `docs/library-readme.md` is source content for generated projects. During generation it is renamed to `README.md`, so users of a generated library receive project-oriented documentation instead of maintenance instructions for the source template.
@@ -130,6 +191,11 @@ dotnet pack src/Template.Library/Template.Library.csproj \
   --output artifacts/packages
 dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --require-source-link \
+  --expected-version 1.0.0
+dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj \
+  --configuration Release \
+  --output artifacts/templates
+dotnet run --file scripts/verify-template-package.cs -- artifacts/templates \
   --expected-version 1.0.0
 ```
 
@@ -288,13 +354,18 @@ dotnet run --file scripts/verify-package.cs -- artifacts/packages \
   --expected-version <version-without-v>
 ```
 
+In the source template repository, the same validation job also detects `packaging/RodriOliveira.DotNet.Library.Template.csproj`, packs the template package, validates its `.nuspec`/content, installs the actual `.nupkg`, generates `Validation.SampleLibrary`, and compares that output with direct repository-template generation.
+
+Generated libraries do not contain `packaging/**`, so those source-template-only release steps are skipped after generation.
+
 Only after those steps succeed does the `ensure-release-tag` job receive `contents: write`. `scripts/ensure-release-tag.sh` performs a second remote tag-existence check to protect against races, creates the tag at exactly `${{ github.sha }}`, and pushes that tag.
 
 This ordering is part of the release integrity contract:
 
 ```text
 request validation
-→ restore/build/test/pack/package validation
+→ restore/build/test/pack/library package validation
+→ template package pack/content validation/install/parity when present
 → create/verify release tag
 → optional NuGet publication
 → GitHub Release
@@ -329,9 +400,9 @@ with name `NUGET_USER` and the nuget.org profile name/username as the value. The
 
 When `NUGET_USER` is absent, empty, or whitespace-only, `NuGet/login` and `dotnet nuget push` must not run. This state does **not** disable release versioning: the tag and GitHub Release still proceed.
 
-For a real non-placeholder package, GitHub Release behavior is:
+For a real non-placeholder package or the real template package, GitHub Release behavior is:
 
-- NuGet disabled: create the GitHub Release and attach `.nupkg`/`.snupkg` after the tag gate succeeds;
+- NuGet disabled: create the GitHub Release and attach eligible package artifacts after the tag gate succeeds;
 - NuGet enabled: publish to NuGet first, then create the GitHub Release only if NuGet publication succeeds.
 
 This preserves independent GitHub Releases while preventing the repository from advertising a successful NuGet distribution after a failed NuGet publication.
@@ -342,11 +413,12 @@ The template intentionally does **not** store or request a long-lived `NUGET_API
 
 The source template must be able to create versioned GitHub Releases without ever publishing its neutral package identity. At the same time, the guard itself must not carry source-repository names or IDs into generated projects.
 
-`release.yml` therefore resolves the actual `PackageId` and compares it to the neutral placeholder. The placeholder is assembled from separate shell string fragments (`"Template"`, `"."`, `"Library"`) so the template engine does not replace that comparison when generating a project.
+`release.yml` therefore resolves the actual generated-library `PackageId` and compares it to the neutral placeholder. The placeholder is assembled from separate shell string fragments (`"Template"`, `"."`, `"Library"`) so the template engine does not replace that comparison when generating a project.
 
 This gives the desired behavior:
 
 - in the source template, `PackageId` is the placeholder, so `safe-to-publish=false`; tag creation/verification and GitHub Release remain allowed, but NuGet publication and `.nupkg`/`.snupkg` release attachments are skipped;
+- in the source template, `RodriOliveira.DotNet.Library.Template` is an independent Template package and can be attached/published when the package has passed validation and `NUGET_USER` enables NuGet publication;
 - in a direct GitHub Template copy that has not yet been renamed, the same protection remains active: GitHub Release is allowed, placeholder NuGet publication and package attachments are not;
 - in a project created via `dotnet new`, the project/package identity is replaced with the generated library name, while the neutral comparison remains unchanged, so GitHub Release artifacts are allowed and NuGet publication is additionally available after Trusted Publishing plus `NUGET_USER` are configured.
 
@@ -421,11 +493,13 @@ A valid generated project must not contain unintended matches.
 
 `.github/workflows/sonar-template-validation.yml` complements that E2E with the optional external-quality contract: scanner version, opt-in behavior, reusable Sonar workflow generation, coordinate parametrization, OpenCover configuration, absence of source identity leakage, and build/test of the generated sample.
 
-`.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, packaged assembly metadata, release helper propagation, and a negative mismatch case.
+`.github/workflows/versioning-validation.yml` complements both with the SemVer contract: base `1.0.0`, stable override, prerelease override, template-package version inheritance, packaged assembly metadata, release helper propagation, and a negative mismatch case.
 
 `.github/workflows/release-publishing-validation.yml` is maintenance-only. It validates the release workflow contract and uses temporary Git repositories to exercise manual-request validation, rejection outside `main`, existing-tag collision, exact-SHA tag creation, tag/SHA mismatch rejection, the `NUGET_USER` decision matrix, and propagation of the reusable release flow into a generated library.
 
 `.github/workflows/github-template-initialization-validation.yml` is maintenance-only. It proves that a simulated GitHub Template Repository copy initialized through `scripts/initialize-repository.sh` is equivalent to direct `dotnet new` output, that bootstrap-only files self-remove, that invalid inputs and unsafe GitHub contexts fail before destructive replacement, and that the initialized output passes the generated-project restore, format, build, test, pack, and Source Link verification contract.
+
+`.github/workflows/template-package-validation.yml` is maintenance-only. It packs `RodriOliveira.DotNet.Library.Template`, validates `.nuspec` metadata and package contents with `scripts/verify-template-package.cs`, installs the produced `.nupkg`, confirms `dotnet new list rodri-lib`, generates `Validation.SampleLibrary`, compares that output against direct repository-template generation, validates uninstall/reinstall behavior, and runs the generated-project restore, format, build, test, pack, and Source Link verification flow.
 
 Release changes must additionally confirm that:
 
@@ -435,6 +509,8 @@ Release changes must additionally confirm that:
 - the created tag targets the exact validated SHA;
 - duplicate/concurrent tag creation is rejected;
 - the neutral placeholder guard remains intact;
+- `Template.Library` is never selected by NuGet publication;
+- `RodriOliveira.DotNet.Library.Template` is the only source-template package eligible for NuGet publication;
 - the placeholder route can create GitHub Release without package artifacts;
 - real-package GitHub Release works when NuGet is disabled;
 - when NuGet is enabled, real-package GitHub Release remains gated on successful NuGet publication;

@@ -1,0 +1,90 @@
+name: Template package validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: template-package-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-e2e:
+    name: Pack, inspect, install and compare template package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Restore source dependencies in locked mode
+        run: dotnet restore Template.Library.slnx --locked-mode
+
+      - name: Build source template
+        run: dotnet build Template.Library.slnx --configuration Release --no-restore
+
+      - name: Resolve template package version
+        id: version
+        shell: bash
+        run: |
+          version="$(dotnet msbuild packaging/RodriOliveira.DotNet.Library.Template.csproj -nologo -getProperty:Version \
+            | tr -d '\r' \
+            | sed '/^[[:space:]]*$/d' \
+            | tail -n 1)"
+
+          if [ -z "$version" ]; then
+            echo '::error::Template package Version could not be resolved.'
+            exit 1
+          fi
+
+          echo "package_version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Pack template package
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj
+          --configuration Release
+          --output artifacts/templates
+          -p:Version="$PACKAGE_VERSION"
+
+      - name: Inspect template package contents
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          dotnet run --file scripts/verify-template-package.cs -- artifacts/templates
+          --expected-version "$PACKAGE_VERSION"
+
+      - name: Install package, generate sample and compare parity
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: >-
+          bash scripts/validate-template-package-e2e.sh
+          "artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg"
+          "$GITHUB_WORKSPACE"
+
+      - name: Upload template package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: template-package
+          path: artifacts/templates/RodriOliveira.DotNet.Library.Template.*.nupkg
+          if-no-files-found: error
+          retention-days: 7
