@@ -71,10 +71,10 @@ Current design examples:
 
 - CI and template validation require read-only repository contents;
 - CodeQL adds `security-events: write`;
-- the release tag gate adds `contents: write` only to the job that creates/verifies the release tag;
+- the release publish job adds `contents: write` only where it creates or resumes the draft GitHub Release and finalizes it;
 - NuGet Trusted Publishing adds `id-token: write` only to the NuGet publishing path;
-- GitHub Release creation adds `contents: write` only to the GitHub Release job.
-- read-only checkout steps disable Git credential persistence; the release tag gate is the intentional exception.
+- artifact attestation adds `attestations: write` and `artifact-metadata: write` only to the release publish job;
+- read-only checkout steps disable Git credential persistence.
 
 ### Verification
 
@@ -248,7 +248,7 @@ Use this checklist when auditing the source repository or preparing a release th
 - [ ] Dependabot alerts and intended security updates are enabled.
 - [ ] Secret scanning and push protection are enabled where available.
 - [ ] CodeQL/code scanning is producing results.
-- [ ] Manual release tag creation has only job-scoped `contents: write`.
+- [ ] Official release publication has only job-scoped `contents: write`, `id-token: write`, `attestations: write`, and `artifact-metadata: write`.
 - [ ] `NUGET_USER` is configured under **Actions > Variables** when NuGet publication is intended.
 - [ ] Trusted Publishing configuration is valid before publishing a real NuGet package.
 - [ ] Optional external integrations use repository secrets/variables rather than committed credentials.

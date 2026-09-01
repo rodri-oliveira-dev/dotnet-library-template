@@ -15,6 +15,10 @@ concurrency:
   group: release-publishing-validation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
 jobs:
   publication-gate:
     name: Validate release and NuGet publication flow
@@ -22,83 +26,85 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Configure .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Validate release workflow contract
         shell: bash
         run: |
+          set -euo pipefail
+
           release='.github/workflows/release.yml'
           request_resolver='scripts/resolve-release-request.sh'
-          tag_guard='scripts/ensure-release-tag.sh'
           nuget_resolver='scripts/resolve-nuget-publishing.sh'
+          candidate_helper='scripts/release-candidate.cs'
           template_package='packaging/RodriOliveira.DotNet.Library.Template.csproj'
           template_verifier='scripts/verify-template-package.cs'
           template_e2e='scripts/validate-template-package-e2e.sh'
 
           test -s "$release"
           test -s "$request_resolver"
-          test -s "$tag_guard"
           test -s "$nuget_resolver"
+          test -s "$candidate_helper"
           test -s "$template_package"
           test -s "$template_verifier"
           test -s "$template_e2e"
+          test ! -e scripts/ensure-release-tag.sh
 
-          grep -Fq "description: 'Release version" "$release"
-          grep -Fq 'Validate release request' "$release"
+          grep -Fq 'run-name:' "$release"
+          grep -Fq 'pull_request:' "$release"
+          grep -Fq 'workflow_dispatch:' "$release"
+          grep -Fq 'publish:' "$release"
+          grep -Fq 'type: boolean' "$release"
+          grep -Fq 'default: false' "$release"
+          grep -Fq 'DOTNET_CLI_TELEMETRY_OPTOUT: "1"' "$release"
+          grep -Fq 'DOTNET_NOLOGO: "1"' "$release"
+          grep -Fq 'global-json-file: global.json' "$release"
+          grep -Fq 'persist-credentials: false' "$release"
+          grep -Fq 'name: Build release candidate' "$release"
+          grep -Fq 'version: "${{ steps.release-metadata.outputs.version }}"' "$release"
+          grep -Fq 'tag: "${{ steps.release-metadata.outputs.tag }}"' "$release"
+          grep -Fq 'is-prerelease: "${{ steps.release-metadata.outputs.is_prerelease }}"' "$release"
           grep -Fq 'run: bash scripts/resolve-release-request.sh' "$release"
-          grep -Fq 'is-manual-release:' "$release"
-          grep -Fq 'Ensure release tag' "$release"
-          grep -Fq 'Create or verify release tag' "$release"
-          grep -Fq 'VALIDATED_SHA:' "$release"
-          grep -Fq 'github.sha' "$release"
-          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
-          grep -Fq 'nuget-publishing-enabled:' "$release"
-          grep -Fq 'steps.nuget-publishing.outputs.nuget_publishing_enabled' "$release"
-          grep -Fq 'template-package-available:' "$release"
-          grep -Fq 'Detect template package project' "$release"
-          grep -Fq 'packaging/RodriOliveira.DotNet.Library.Template.csproj' "$release"
-          grep -Fq 'RodriOliveira.DotNet.Library.Template' "$release"
-          grep -Fq "package_type\" != 'Template'" "$release"
-          grep -Fq 'TEMPLATE_PACKAGE_AVAILABLE:' "$release"
+          grep -Fq 'dotnet format Template.Library.slnx --verify-no-changes --no-restore' "$release"
+          grep -Fq 'Validate placeholder library publication guard' "$release"
+          grep -Fq 'safe_to_publish=false' "$release"
+          grep -Fq 'Pack placeholder library for validation only' "$release"
+          grep -Fq 'artifacts/validation-packages' "$release"
           grep -Fq 'Pack template package' "$release"
-          grep -Fq 'artifacts/templates' "$release"
-          grep -Fq 'scripts/verify-template-package.cs' "$release"
-          grep -Fq 'scripts/validate-template-package-e2e.sh' "$release"
-          grep -Fq 'Upload template package artifact' "$release"
-          grep -Fq 'template-package' "$release"
-          grep -Fq 'Resolve NuGet publishing opt-in' "$release"
-          grep -Fq 'NUGET_USER:' "$release"
-          grep -Fq 'vars.NUGET_USER' "$release"
-          grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
-          grep -Fq "if: needs.build-and-pack.outputs.nuget-publishing-enabled == 'true'" "$release"
-          grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
-          grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
-          grep -Fq "needs.publish-nuget.result == 'success'" "$release"
-          grep -Fq 'Create GitHub Release' "$release"
-          grep -Fq 'Download generated library package artifacts' "$release"
-          grep -Fq 'GH_REPO:' "$release"
-          grep -Fq 'github.repository' "$release"
-          grep -Fq -- '--repo "$GH_REPO"' "$release"
-          grep -Fq 'id-token: write' "$release"
+          grep -Fq 'packaging/RodriOliveira.DotNet.Library.Template.csproj' "$release"
+          grep -Fq 'RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg' "$release"
+          grep -Fq 'Validate template package install and parity' "$release"
+          grep -Fq 'Generate release manifest and checksums' "$release"
+          grep -Fq 'release-candidate-${{ steps.release-metadata.outputs.version }}' "$release"
+          grep -Fq 'Verify downloaded release candidate' "$release"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
+          grep -Fq 'Create or resume draft GitHub Release' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
-          grep -Fq 'dotnet nuget push' "$release"
-          grep -Fq 'artifacts/packages/${LIBRARY_PACKAGE_ID}.${PACKAGE_VERSION}.nupkg' "$release"
-          grep -Fq 'artifacts/templates/RodriOliveira.DotNet.Library.Template.${PACKAGE_VERSION}.nupkg' "$release"
+          grep -Fq 'Publish template package to NuGet.org' "$release"
+          grep -Fq 'Publish GitHub Release' "$release"
+          grep -Fq 'environment: release' "$release"
+          grep -Fq 'refs/heads/main' "$release"
+          grep -Fq 'commit: "${{ steps.release-commit.outputs.commit }}"' "$release"
+          grep -Fq 'VALIDATED_SHA: ${{ needs.build.outputs.commit }}' "$release"
+          grep -Fq 'ref: "${{ needs.build.outputs.commit }}"' "$release"
+          grep -Fq 'id-token: write' "$release"
+          grep -Fq 'attestations: write' "$release"
+          grep -Fq 'artifact-metadata: write' "$release"
 
-          if grep -Fq 'workflow_dispatch is dry-run' "$release" "$nuget_resolver"; then
-            echo 'workflow_dispatch must be a real release path, not a dry run.'
+          if grep -Fq 'push:' "$release"; then
+            echo 'release.yml must not keep the old push-tag release trigger.'
             exit 1
           fi
 
-          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|artifacts/\*\*/\*.nupkg' "$release"; then
-            echo 'Persistent NuGet credentials or broad permissions are not allowed.'
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|packages:[[:space:]]write|artifacts/\*\*/\*.nupkg|major-alias|minor-alias|github packages|nuget.pkg.github.com' "$release"; then
+            echo 'Persistent NuGet credentials, broad permissions, GitHub Packages, or Action aliases are not allowed.'
             exit 1
           fi
 
@@ -106,14 +112,68 @@ jobs:
             /^[[:space:]]{2}[A-Za-z0-9_-]+:$/ { job=$1; sub(":", "", job) }
             /id-token:[[:space:]]write/ { print job }
           ' "$release")"
-          if [ "$id_token_jobs" != 'publish-nuget' ]; then
-            echo "id-token: write deve existir somente no job publish-nuget, obtido: $id_token_jobs"
+          if [[ "$id_token_jobs" != 'publish' ]]; then
+            echo "id-token: write must exist only on the publish job, got: $id_token_jobs"
+            exit 1
+          fi
+
+          draft_line="$(grep -n 'Create or resume draft GitHub Release' "$release" | cut -d: -f1)"
+          nuget_line="$(grep -n 'Publish template package to NuGet.org' "$release" | cut -d: -f1)"
+          final_line="$(grep -n 'Publish GitHub Release' "$release" | tail -n 1 | cut -d: -f1)"
+          if (( draft_line >= nuget_line || nuget_line >= final_line )); then
+            echo 'Release must create/resume draft before NuGet and finalize only after NuGet succeeds.'
+            exit 1
+          fi
+
+      - name: Validate release metadata resolver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolver='scripts/resolve-release-request.sh'
+
+          assert_metadata() {
+            expected_version="$1"
+            expected_tag="$2"
+            expected_prerelease="$3"
+            expected_publish="$4"
+            event_name="$5"
+            requested_version="$6"
+            publish_requested="$7"
+            output="$(mktemp)"
+
+            EVENT_NAME="$event_name" \
+              REQUESTED_VERSION="$requested_version" \
+              PUBLISH_REQUESTED="$publish_requested" \
+              GITHUB_OUTPUT="$output" \
+              bash "$resolver"
+
+            grep -Fxq "version=$expected_version" "$output"
+            grep -Fxq "tag=$expected_tag" "$output"
+            grep -Fxq "is_prerelease=$expected_prerelease" "$output"
+            grep -Fxq "should_publish=$expected_publish" "$output"
+            rm -f "$output"
+          }
+
+          assert_metadata 0.0.0-ci.42 v0.0.0-ci.42 true false pull_request 0.0.0-ci.42 true
+          assert_metadata 1.2.0 v1.2.0 false false workflow_dispatch 1.2.0 false
+          assert_metadata 1.3.0-beta.1 v1.3.0-beta.1 true true workflow_dispatch 1.3.0-beta.1 true
+
+          if EVENT_NAME=workflow_dispatch REQUESTED_VERSION=v1.2.0 PUBLISH_REQUESTED=true bash "$resolver"; then
+            echo 'Versions with a leading v must be rejected.'
+            exit 1
+          fi
+
+          if EVENT_NAME=workflow_dispatch REQUESTED_VERSION=1.2 PUBLISH_REQUESTED=true bash "$resolver"; then
+            echo 'Invalid SemVer must be rejected.'
             exit 1
           fi
 
       - name: Validate NuGet publication decision matrix
         shell: bash
         run: |
+          set -euo pipefail
+
           resolver='scripts/resolve-nuget-publishing.sh'
 
           assert_decision() {
@@ -126,7 +186,7 @@ jobs:
             user_value="${7:-}"
             output="$(mktemp)"
 
-            if [ "$user_mode" = 'absent' ]; then
+            if [[ "$user_mode" == 'absent' ]]; then
               env -u NUGET_USER \
                 SHOULD_PUBLISH="$should_publish" \
                 SAFE_TO_PUBLISH="$safe_to_publish" \
@@ -147,6 +207,7 @@ jobs:
             rm -f "$output"
           }
 
+          assert_decision false release-disabled false true true configured 'nuget-profile'
           assert_decision false nuget-user-not-configured true true false absent
           assert_decision false nuget-user-not-configured true true false configured ''
           assert_decision false nuget-user-not-configured true true false configured '   '
@@ -154,157 +215,48 @@ jobs:
           assert_decision false placeholder-package true false false configured 'nuget-profile'
           assert_decision true enabled true false true configured 'nuget-profile'
           assert_decision false nuget-user-not-configured true false true absent
-          assert_decision false release-disabled false true true configured 'nuget-profile'
 
-      - name: Validate manual release request rules
+      - name: Validate release candidate helper
         shell: bash
         run: |
-          resolver="$GITHUB_WORKSPACE/scripts/resolve-release-request.sh"
+          set -euo pipefail
+
           root="$(mktemp -d)"
-          remote="$root/remote.git"
-          work="$root/work"
+          package="$root/Template.Library.1.2.0.nupkg"
+          manifest="$root/release-manifest.json"
+          checksums="$root/SHA256SUMS"
 
-          git init --bare "$remote"
-          git init -b main "$work"
-          git -C "$work" config user.name 'Release Validation'
-          git -C "$work" config user.email 'release-validation@example.invalid'
-          echo baseline > "$work/file.txt"
-          git -C "$work" add file.txt
-          git -C "$work" commit -m 'Initial commit'
-          git -C "$work" remote add origin "$remote"
-          git -C "$work" push -u origin main
+          printf 'validated package' > "$package"
 
-          output="$(mktemp)"
-          (
-            cd "$work"
-            EVENT_NAME=workflow_dispatch \
-              MANUAL_VERSION=v1.2.0 \
-              REF_NAME=main \
-              REF_TYPE=branch \
-              RELEASE_BRANCH=main \
-              GITHUB_OUTPUT="$output" \
-              bash "$resolver"
-          )
-          grep -Fxq 'package_version=1.2.0' "$output"
-          grep -Fxq 'release_tag=v1.2.0' "$output"
-          grep -Fxq 'should_publish=true' "$output"
-          grep -Fxq 'is_manual_release=true' "$output"
-          rm -f "$output"
+          dotnet run --file scripts/release-candidate.cs -- manifest \
+            --version 1.2.0 \
+            --tag v1.2.0 \
+            --commit 0000000000000000000000000000000000000000 \
+            --package-id Template.Library \
+            --package "$package" \
+            --output "$manifest" \
+            --checksums-output "$checksums"
 
-          if (
-            cd "$work"
-            EVENT_NAME=workflow_dispatch MANUAL_VERSION=v1.2.0 REF_NAME=feature REF_TYPE=branch bash "$resolver"
-          ); then
-            echo 'Manual release outside main should have failed.'
-            exit 1
-          fi
+          dotnet run --file scripts/release-candidate.cs -- verify \
+            --version 1.2.0 \
+            --tag v1.2.0 \
+            --commit 0000000000000000000000000000000000000000 \
+            --package-id Template.Library \
+            --package "$package" \
+            --manifest "$manifest" \
+            --checksums "$checksums"
 
-          if (
-            cd "$work"
-            EVENT_NAME=workflow_dispatch MANUAL_VERSION=1.2.0 REF_NAME=main REF_TYPE=branch bash "$resolver"
-          ); then
-            echo 'Release version without v prefix should have failed.'
-            exit 1
-          fi
+          printf 'tampered package' > "$package"
 
-          git -C "$work" tag v1.1.0
-          git -C "$work" push origin refs/tags/v1.1.0
-          if (
-            cd "$work"
-            EVENT_NAME=workflow_dispatch MANUAL_VERSION=v1.1.0 REF_NAME=main REF_TYPE=branch bash "$resolver"
-          ); then
-            echo 'Manual release with an existing tag should have failed.'
-            exit 1
-          fi
-
-          output="$(mktemp)"
-          (
-            cd "$work"
-            EVENT_NAME=push \
-              REF_NAME=v1.1.0 \
-              REF_TYPE=tag \
-              GITHUB_OUTPUT="$output" \
-              bash "$resolver"
-          )
-          grep -Fxq 'release_tag=v1.1.0' "$output"
-          grep -Fxq 'is_manual_release=false' "$output"
-          rm -f "$output"
-
-      - name: Validate release tag creation and SHA guard
-        shell: bash
-        run: |
-          tag_guard="$GITHUB_WORKSPACE/scripts/ensure-release-tag.sh"
-          root="$(mktemp -d)"
-          remote="$root/remote.git"
-          work="$root/work"
-
-          git init --bare "$remote"
-          git init -b main "$work"
-          git -C "$work" config user.name 'Release Validation'
-          git -C "$work" config user.email 'release-validation@example.invalid'
-          echo baseline > "$work/file.txt"
-          git -C "$work" add file.txt
-          git -C "$work" commit -m 'Initial commit'
-          git -C "$work" remote add origin "$remote"
-          git -C "$work" push -u origin main
-          validated_sha="$(git -C "$work" rev-parse HEAD)"
-
-          (
-            cd "$work"
-            IS_MANUAL_RELEASE=true \
-              RELEASE_TAG=v2.0.0 \
-              VALIDATED_SHA="$validated_sha" \
-              bash "$tag_guard"
-          )
-
-          remote_tag_sha="$(git ls-remote "$remote" refs/tags/v2.0.0 | awk '{print $1}')"
-          test "$remote_tag_sha" = "$validated_sha"
-
-          if (
-            cd "$work"
-            IS_MANUAL_RELEASE=true RELEASE_TAG=v2.0.0 VALIDATED_SHA="$validated_sha" bash "$tag_guard"
-          ); then
-            echo 'Concurrent/existing manual tag should have been rejected.'
-            exit 1
-          fi
-
-          (
-            cd "$work"
-            IS_MANUAL_RELEASE=false \
-              RELEASE_TAG=v2.0.0 \
-              VALIDATED_SHA="$validated_sha" \
-              bash "$tag_guard"
-          )
-
-          echo changed >> "$work/file.txt"
-          git -C "$work" add file.txt
-          git -C "$work" commit -m 'Different commit'
-          different_sha="$(git -C "$work" rev-parse HEAD)"
-
-          if (
-            cd "$work"
-            IS_MANUAL_RELEASE=false RELEASE_TAG=v2.0.0 VALIDATED_SHA="$different_sha" bash "$tag_guard"
-          ); then
-            echo 'Tag pointing to a different SHA should have been rejected.'
-            exit 1
-          fi
-
-          git -C "$work" push --force origin "$different_sha:refs/tags/v2.0.0"
-          test "$(git -C "$work" rev-list -n 1 v2.0.0)" = "$validated_sha"
-          if (
-            cd "$work"
-            IS_MANUAL_RELEASE=false RELEASE_TAG=v2.0.0 VALIDATED_SHA="$validated_sha" bash "$tag_guard"
-          ); then
-            echo 'A remotely moved tag must be rejected even when the checkout still has the old tag.'
-            exit 1
-          fi
-
-          git -C "$work" push origin :refs/tags/v2.0.0
-          if (
-            cd "$work"
-            IS_MANUAL_RELEASE=false RELEASE_TAG=v2.0.0 VALIDATED_SHA="$validated_sha" bash "$tag_guard"
-          ); then
-            echo 'A remotely deleted tag must be rejected before publication.'
+          if dotnet run --file scripts/release-candidate.cs -- verify \
+            --version 1.2.0 \
+            --tag v1.2.0 \
+            --commit 0000000000000000000000000000000000000000 \
+            --package-id Template.Library \
+            --package "$package" \
+            --manifest "$manifest" \
+            --checksums "$checksums"; then
+            echo 'Tampered release candidate must fail verification.'
             exit 1
           fi
 
@@ -314,6 +266,8 @@ jobs:
       - name: Generate validation library
         shell: bash
         run: |
+          set -euo pipefail
+
           generated="$RUNNER_TEMP/release-publishing-template/Validation.SampleLibrary"
           mkdir -p "$(dirname "$generated")"
           dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
@@ -322,26 +276,60 @@ jobs:
       - name: Validate generated release flow
         shell: bash
         run: |
+          set -euo pipefail
+
           release="$GENERATED_ROOT/.github/workflows/release.yml"
           request_resolver="$GENERATED_ROOT/scripts/resolve-release-request.sh"
-          tag_guard="$GENERATED_ROOT/scripts/ensure-release-tag.sh"
           nuget_resolver="$GENERATED_ROOT/scripts/resolve-nuget-publishing.sh"
+          candidate_helper="$GENERATED_ROOT/scripts/release-candidate.cs"
 
           test -s "$release"
           test -s "$request_resolver"
-          test -s "$tag_guard"
           test -s "$nuget_resolver"
+          test -s "$candidate_helper"
+          test ! -e "$GENERATED_ROOT/scripts/ensure-release-tag.sh"
+          test ! -e "$GENERATED_ROOT/.github/workflows/release-publishing-validation.yml"
+          test ! -e "$GENERATED_ROOT/packaging"
+          test ! -e "$GENERATED_ROOT/.github/workflows/template-package-validation.yml"
+          test ! -e "$GENERATED_ROOT/scripts/verify-template-package.cs"
+          test ! -e "$GENERATED_ROOT/scripts/validate-template-package-e2e.sh"
+
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$release"
-          grep -Fq 'run: bash scripts/resolve-release-request.sh' "$release"
-          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
-          grep -Fq 'run: bash scripts/resolve-nuget-publishing.sh' "$release"
-          grep -Fq 'template-package-available:' "$release"
-          grep -Fq 'GH_REPO:' "$release"
-          grep -Fq 'github.repository' "$release"
-          grep -Fq -- '--repo "$GH_REPO"' "$release"
+          grep -Fq 'release-candidate-${{ steps.release-metadata.outputs.version }}' "$release"
+          grep -Fq 'scripts/release-candidate.cs' "$release"
+          grep -Fq 'release-manifest.json' "$release"
+          grep -Fq 'SHA256SUMS' "$release"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
+          grep -Fq 'refs/heads/main' "$release"
+          grep -Fq 'VALIDATED_SHA: ${{ needs.build.outputs.commit }}' "$release"
+          grep -Fq 'ref: "${{ needs.build.outputs.commit }}"' "$release"
+          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Publish GitHub Release' "$release"
           grep -Fq 'NUGET_USER' "$GENERATED_ROOT/README.md"
           grep -Fq 'Settings' "$GENERATED_ROOT/README.md"
           grep -Fq 'Secrets and variables' "$GENERATED_ROOT/README.md"
+
+          if grep -Eq 'RodriOliveira\.DotNet\.Library\.Template|packaging/|verify-template-package|validate-template-package-e2e|template-package-validation' "$release"; then
+            echo 'Source-template release concerns leaked into generated release.yml.'
+            exit 1
+          fi
+
+          if grep -Fq 'push:' "$release"; then
+            echo 'Generated release.yml must not keep the old push-tag release trigger.'
+            exit 1
+          fi
+
+          output="$(mktemp)"
+          EVENT_NAME=workflow_dispatch \
+            REQUESTED_VERSION=1.2.0 \
+            PUBLISH_REQUESTED=false \
+            GITHUB_OUTPUT="$output" \
+            bash "$request_resolver"
+          grep -Fxq 'version=1.2.0' "$output"
+          grep -Fxq 'tag=v1.2.0' "$output"
+          grep -Fxq 'should_publish=false' "$output"
+          rm -f "$output"
 
           output="$(mktemp)"
           SHOULD_PUBLISH=true \
@@ -350,27 +338,9 @@ jobs:
             NUGET_USER='' \
             GITHUB_OUTPUT="$output" \
             bash "$nuget_resolver"
-
           grep -Fxq 'nuget_publishing_enabled=false' "$output"
           grep -Fxq 'nuget_publishing_reason=nuget-user-not-configured' "$output"
           rm -f "$output"
-
-          if [ -e "$GENERATED_ROOT/.github/workflows/release-publishing-validation.yml" ]; then
-            echo 'Maintenance-only release publishing validation leaked into generated output.'
-            exit 1
-          fi
-
-          if [ -e "$GENERATED_ROOT/packaging" ]; then
-            echo 'Template-package packaging project leaked into generated output.'
-            exit 1
-          fi
-
-          if [ -e "$GENERATED_ROOT/.github/workflows/template-package-validation.yml" ] ||
-             [ -e "$GENERATED_ROOT/scripts/verify-template-package.cs" ] ||
-             [ -e "$GENERATED_ROOT/scripts/validate-template-package-e2e.sh" ]; then
-            echo 'Template-package maintenance assets leaked into generated output.'
-            exit 1
-          fi
 
       - name: Uninstall template
         if: always()

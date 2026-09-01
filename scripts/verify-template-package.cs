@@ -5,8 +5,16 @@ using System.Xml.Linq;
 
 const string ExpectedPackageId = "RodriOliveira.DotNet.Library.Template";
 const string ExpectedPackageType = "Template";
+const string ExpectedTitle = "Rodrigo Oliveira .NET Library Template";
+const string ExpectedAuthors = "Rodrigo de Oliveira";
+const string ExpectedRepositoryUrl = "https://github.com/rodri-oliveira-dev/dotnet-library-template";
+const string ExpectedProjectUrl = "https://github.com/rodri-oliveira-dev/dotnet-library-template";
+const string ExpectedReadme = "README.md";
+const string ExpectedIcon = "nuget-icon.png";
 const string ExpectedShortName = "rodri-lib";
 const string ExpectedSourceName = "Template.Library";
+const string RequiredPackageTagsText = "dotnet;csharp;library;template;dotnet-new;net10;nuget";
+const long MaxNuGetIconSizeInBytes = 1_048_576;
 
 if (args.Length < 1)
 {
@@ -43,11 +51,13 @@ var metadata = nuspec.Root.Element(ns + "metadata")
     ?? throw new InvalidOperationException("Package metadata was not found in the nuspec.");
 
 AssertEqual(ExpectedPackageId, metadata.Element(ns + "id")?.Value, "PackageId");
-AssertNotBlank(metadata.Element(ns + "title")?.Value, "Title");
-AssertNotBlank(metadata.Element(ns + "authors")?.Value, "Authors");
-AssertNotBlank(metadata.Element(ns + "description")?.Value, "Description");
-AssertNotBlank(metadata.Element(ns + "tags")?.Value, "PackageTags");
-AssertEqual("README.md", metadata.Element(ns + "readme")?.Value, "PackageReadme");
+AssertEqual(ExpectedTitle, metadata.Element(ns + "title")?.Value, "Title");
+AssertEqual(ExpectedAuthors, metadata.Element(ns + "authors")?.Value, "Authors");
+AssertDescription(metadata.Element(ns + "description")?.Value);
+AssertPackageTags(metadata.Element(ns + "tags")?.Value);
+AssertEqual(ExpectedReadme, metadata.Element(ns + "readme")?.Value, "PackageReadme");
+AssertEqual(ExpectedIcon, metadata.Element(ns + "icon")?.Value, "PackageIcon");
+AssertDeprecatedMetadataAbsent(metadata, ns);
 var license = metadata.Element(ns + "license");
 AssertEqual("expression", license?.Attribute("type")?.Value, "LicenseType");
 AssertEqual("MIT", license?.Value, "LicenseExpression");
@@ -67,8 +77,8 @@ AssertEqual(ExpectedPackageType, packageType, "PackageType");
 
 var repository = metadata.Element(ns + "repository");
 AssertEqual("git", repository?.Attribute("type")?.Value, "RepositoryType");
-AssertNotBlank(repository?.Attribute("url")?.Value, "RepositoryUrl");
-AssertNotBlank(metadata.Element(ns + "projectUrl")?.Value, "ProjectUrl");
+AssertEqual(ExpectedRepositoryUrl, repository?.Attribute("url")?.Value, "RepositoryUrl");
+AssertEqual(ExpectedProjectUrl, metadata.Element(ns + "projectUrl")?.Value, "ProjectUrl");
 
 var entries = archive.Entries
     .Where(entry => !string.IsNullOrEmpty(entry.Name))
@@ -79,7 +89,9 @@ var entrySet = entries.ToHashSet(StringComparer.Ordinal);
 var requiredEntries = new[]
 {
     "content/.template.config/template.json",
-    "README.md",
+    ExpectedReadme,
+    ExpectedIcon,
+    "content/resources/nuget-icon.png",
     "content/Template.Library.slnx",
     "content/Directory.Build.props",
     "content/Directory.Packages.props",
@@ -96,12 +108,21 @@ var requiredEntries = new[]
     "content/docs/library-readme.md",
     "content/.github/workflows/ci.yml",
     "content/.github/workflows/release.yml",
+    "content/scripts/release-candidate.cs",
     "content/scripts/verify-package.cs",
 };
 
 foreach (var entry in requiredEntries)
 {
     AssertContains(entrySet, entry);
+}
+
+var iconEntry = archive.GetEntry(ExpectedIcon)
+    ?? throw new InvalidOperationException("NuGet package icon entry was not found.");
+if (iconEntry.Length <= 0 || iconEntry.Length > MaxNuGetIconSizeInBytes)
+{
+    throw new InvalidOperationException(
+        $"PackageIcon '{ExpectedIcon}' must be non-empty and at most {MaxNuGetIconSizeInBytes} bytes, got {iconEntry.Length} bytes.");
 }
 
 var templateJsonEntry = archive.GetEntry("content/.template.config/template.json")
@@ -112,6 +133,27 @@ using (var templateJsonReader = new StreamReader(templateJsonEntry.Open()))
     AssertStringContains(templateJson, "\"shortName\": \"rodri-lib\"", "template.json shortName");
     AssertStringContains(templateJson, "\"sourceName\": \"Template.Library\"", "template.json sourceName");
     AssertStringContains(templateJson, "\"rename\":", "template.json rename");
+}
+
+var generatedReleaseEntry = archive.GetEntry("content/.github/workflows/release.yml")
+    ?? throw new InvalidOperationException("Generated release workflow entry was not found.");
+using (var generatedReleaseReader = new StreamReader(generatedReleaseEntry.Open()))
+{
+    var generatedRelease = generatedReleaseReader.ReadToEnd();
+    AssertStringContains(generatedRelease, "workflow_dispatch:", "generated release workflow_dispatch");
+    AssertStringContains(generatedRelease, "publish:", "generated release publish input");
+    AssertStringContains(generatedRelease, "release-candidate-${{ steps.release-metadata.outputs.version }}", "generated release candidate artifact");
+    AssertStringContains(generatedRelease, "scripts/release-candidate.cs", "generated release candidate helper");
+    AssertStringContains(generatedRelease, "release-manifest.json", "generated release manifest");
+    AssertStringContains(generatedRelease, "SHA256SUMS", "generated release checksums");
+    AssertStringContains(generatedRelease, "actions/attest@", "generated release attestation");
+    AssertStringContains(generatedRelease, "NuGet/login@8d196754b4036150537f80ac539e15c2f1028841", "generated NuGet Trusted Publishing");
+
+    AssertStringDoesNotContain(generatedRelease, "RodriOliveira.DotNet.Library.Template", "generated release template PackageId");
+    AssertStringDoesNotContain(generatedRelease, "packaging/", "generated release packaging path");
+    AssertStringDoesNotContain(generatedRelease, "packaging\\", "generated release packaging path");
+    AssertStringDoesNotContain(generatedRelease, "verify-template-package", "generated release template verifier");
+    AssertStringDoesNotContain(generatedRelease, "validate-template-package-e2e", "generated release template E2E validator");
 }
 
 var forbiddenPrefixes = new[]
@@ -137,6 +179,7 @@ var forbiddenPrefixes = new[]
 var forbiddenExactEntries = new[]
 {
     "content/.git",
+    "content/docs/library-release.yml",
     "content/.github/workflows/template-package-validation.yml",
     "content/scripts/verify-template-package.cs",
     "content/scripts/validate-template-package-e2e.sh",
@@ -176,6 +219,10 @@ foreach (var entry in forbiddenExactEntries)
 Console.WriteLine($"Template package validated: {Path.GetFileName(nupkg)}");
 Console.WriteLine($"PackageId: {ExpectedPackageId}");
 Console.WriteLine($"PackageType: {ExpectedPackageType}");
+Console.WriteLine($"Title: {ExpectedTitle}");
+Console.WriteLine($"Authors: {ExpectedAuthors}");
+Console.WriteLine($"RepositoryUrl: {ExpectedRepositoryUrl}");
+Console.WriteLine($"PackageIcon: {ExpectedIcon} ({iconEntry.Length} bytes)");
 Console.WriteLine($"Template short name: {ExpectedShortName}");
 Console.WriteLine($"Template source name: {ExpectedSourceName}");
 
@@ -229,6 +276,53 @@ static void AssertStringContains(string value, string expected, string field)
     if (!value.Contains(expected, StringComparison.Ordinal))
     {
         throw new InvalidOperationException($"{field} was not found.");
+    }
+}
+
+static void AssertStringDoesNotContain(string value, string forbidden, string field)
+{
+    if (value.Contains(forbidden, StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException($"{field} leaked forbidden content: {forbidden}");
+    }
+}
+
+static void AssertDescription(string? description)
+{
+    AssertNotBlank(description, "Description");
+    AssertStringContains(description!, "dotnet new template", "Description");
+    AssertStringContains(description!, ".NET 10 class libraries", "Description");
+    AssertStringContains(description!, "release automation", "Description");
+}
+
+static void AssertPackageTags(string? tags)
+{
+    AssertNotBlank(tags, "PackageTags");
+
+    var normalizedTags = tags!
+        .Replace(';', ' ')
+        .Replace(',', ' ');
+    var tagSet = normalizedTags
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var tag in RequiredPackageTagsText.Split(';'))
+    {
+        if (!tagSet.Contains(tag))
+        {
+            throw new InvalidOperationException($"PackageTags must include '{tag}'.");
+        }
+    }
+}
+
+static void AssertDeprecatedMetadataAbsent(XElement metadata, XNamespace ns)
+{
+    foreach (var elementName in new[] { "licenseUrl", "iconUrl", "owners", "summary" })
+    {
+        if (metadata.Element(ns + elementName) is not null)
+        {
+            throw new InvalidOperationException($"Deprecated NuGet metadata must not be used: {elementName}");
+        }
     }
 }
 

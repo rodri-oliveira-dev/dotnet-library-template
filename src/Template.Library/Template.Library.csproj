@@ -6,15 +6,13 @@
     <EnablePackageValidation>true</EnablePackageValidation>
 
     <!-- NuGet metadata -->
-    <PackageId>RodriOliveira.DotNet.Library.Baseline</PackageId>
-    <Title>Rodrigo Oliveira .NET Library Baseline</Title>
-    <Authors>Rodrigo de Oliveira</Authors>
+    <PackageId>Template.Library</PackageId>
+    <Title>Template.Library</Title>
+    <Authors>TODO: Set package authors.</Authors>
     <Description>
-      Production-ready .NET 10 class library baseline with modern build,
-      packaging, testing, security, Source Link, package validation,
-      and release automation practices.
+      TODO: Describe the library before publishing.
     </Description>
-    <PackageTags>dotnet;csharp;library;baseline;template;net10;nuget</PackageTags>
+    <PackageTags>dotnet;csharp;library;net10;nuget</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <!-- NuGet presentation -->
@@ -23,8 +21,6 @@
 
     <!-- Repository -->
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/rodri-oliveira-dev/dotnet-library-template</PackageProjectUrl>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
 
     <!-- Documentation and symbols -->

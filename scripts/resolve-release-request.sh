@@ -2,30 +2,20 @@
 set -euo pipefail
 
 event_name="${EVENT_NAME:-}"
-manual_version="${MANUAL_VERSION:-}"
-ref_name="${REF_NAME:-}"
-ref_type="${REF_TYPE:-}"
-release_branch="${RELEASE_BRANCH:-main}"
-remote_name="${REMOTE_NAME:-origin}"
+requested_version="${REQUESTED_VERSION:-${MANUAL_VERSION:-}}"
+publish_requested="${PUBLISH_REQUESTED:-false}"
+
+if [[ "$publish_requested" != "true" && "$publish_requested" != "false" ]]; then
+  echo "::error::PUBLISH_REQUESTED must be 'true' or 'false', got '$publish_requested'."
+  exit 1
+fi
 
 case "$event_name" in
-  workflow_dispatch)
-    if [[ "$ref_type" != "branch" || "$ref_name" != "$release_branch" ]]; then
-      echo "::error::Manual releases must run from branch '$release_branch'. Current ref: ${ref_type:-unknown}/${ref_name:-unknown}."
-      exit 1
-    fi
-
-    release_tag="$manual_version"
-    is_manual_release=true
+  pull_request)
+    should_publish=false
     ;;
-  push)
-    if [[ "$ref_type" != "tag" ]]; then
-      echo "::error::Push-triggered releases must run from a tag ref. Current ref: ${ref_type:-unknown}/${ref_name:-unknown}."
-      exit 1
-    fi
-
-    release_tag="$ref_name"
-    is_manual_release=false
+  workflow_dispatch)
+    should_publish="$publish_requested"
     ;;
   *)
     echo "::error::Unsupported release event '$event_name'."
@@ -33,37 +23,39 @@ case "$event_name" in
     ;;
 esac
 
-semver_regex='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
-
-if [[ ! "$release_tag" =~ $semver_regex ]]; then
-  echo "::error::Release version '$release_tag' must match vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease."
+if [[ -z "$requested_version" ]]; then
+  echo '::error::REQUESTED_VERSION is required.'
   exit 1
 fi
 
-if [[ "$is_manual_release" == "true" ]]; then
-  if ! remote_tag="$(git ls-remote --tags "$remote_name" "refs/tags/$release_tag")"; then
-    echo "::error::Could not query remote '$remote_name' for release tag '$release_tag'."
-    exit 1
-  fi
+semver_regex='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
-  if [[ -n "$remote_tag" ]]; then
-    echo "::error::Release tag '$release_tag' already exists. Choose a new version."
-    exit 1
-  fi
+if [[ ! "$requested_version" =~ $semver_regex ]]; then
+  echo "::error::Release version '$requested_version' must match MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-prerelease without a leading v."
+  exit 1
 fi
 
-package_version="${release_tag#v}"
+release_tag="v$requested_version"
+is_prerelease=false
+
+if [[ "$requested_version" == *-* ]]; then
+  is_prerelease=true
+fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
-    echo "package_version=$package_version"
+    echo "version=$requested_version"
+    echo "tag=$release_tag"
+    echo "is_prerelease=$is_prerelease"
+    echo "should_publish=$should_publish"
+    echo "package_version=$requested_version"
     echo "release_tag=$release_tag"
-    echo "should_publish=true"
-    echo "is_manual_release=$is_manual_release"
   } >> "$GITHUB_OUTPUT"
 else
-  echo "package_version=$package_version"
+  echo "version=$requested_version"
+  echo "tag=$release_tag"
+  echo "is_prerelease=$is_prerelease"
+  echo "should_publish=$should_publish"
+  echo "package_version=$requested_version"
   echo "release_tag=$release_tag"
-  echo "should_publish=true"
-  echo "is_manual_release=$is_manual_release"
 fi

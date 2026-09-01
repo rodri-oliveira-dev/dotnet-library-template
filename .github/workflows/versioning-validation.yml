@@ -30,7 +30,7 @@ jobs:
       - name: Configurar .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Restaurar ferramentas locais
         run: dotnet tool restore
@@ -105,8 +105,9 @@ jobs:
           test -s "$GENERATED_ROOT/Directory.Build.props"
           test -s "$GENERATED_ROOT/.github/workflows/release.yml"
           test -s "$GENERATED_ROOT/scripts/verify-package.cs"
+          test -s "$GENERATED_ROOT/scripts/release-candidate.cs"
           test -s "$GENERATED_ROOT/scripts/resolve-release-request.sh"
-          test -s "$GENERATED_ROOT/scripts/ensure-release-tag.sh"
+          test ! -e "$GENERATED_ROOT/scripts/ensure-release-tag.sh"
           test ! -e "$GENERATED_ROOT/.github/workflows/versioning-validation.yml"
           test ! -e "$GENERATED_ROOT/packaging"
           test ! -e "$GENERATED_ROOT/.github/workflows/template-package-validation.yml"
@@ -120,19 +121,27 @@ jobs:
           grep -Fq '1.0.0' "$GENERATED_ROOT/README.md"
           grep -Fq -- '-p:Version="$PACKAGE_VERSION"' "$release"
           grep -Fq -- '--expected-version "$PACKAGE_VERSION"' "$release"
-          grep -Fq 'Ensure release tag' "$release"
-          grep -Fq 'run: bash scripts/ensure-release-tag.sh' "$release"
-          grep -Fq 'always() &&' "$release"
-          grep -Fq "needs.ensure-release-tag.result == 'success'" "$release"
-          grep -Fq "needs.build-and-pack.outputs.nuget-publishing-enabled != 'true' ||" "$release"
-          grep -Fq "needs.publish-nuget.result == 'success'" "$release"
-          grep -Fq 'Create GitHub Release' "$release"
-          grep -Fq 'Download generated library package artifacts' "$release"
+          grep -Fq 'pull_request:' "$release"
+          grep -Fq 'workflow_dispatch:' "$release"
+          grep -Fq 'publish:' "$release"
+          grep -Fq 'release-candidate-${{ steps.release-metadata.outputs.version }}' "$release"
+          grep -Fq 'scripts/release-candidate.cs' "$release"
+          grep -Fq 'release-manifest.json' "$release"
+          grep -Fq 'SHA256SUMS' "$release"
+          grep -Fq 'Verify downloaded release candidate' "$release"
+          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841' "$release"
+          grep -Fq 'Publish GitHub Release' "$release"
           grep -Fq 'SAFE_TO_PUBLISH:' "$release"
-          grep -Fq 'TEMPLATE_PACKAGE_AVAILABLE:' "$release"
+          grep -Fq 'NUGET_PUBLISHING_ENABLED:' "$release"
 
           if grep -Fq -- '-p:PackageVersion=' "$release"; then
             echo 'release.yml não deve manter um segundo override de PackageVersion.'
+            exit 1
+          fi
+
+          if grep -Fq 'push:' "$release"; then
+            echo 'release.yml gerado nao deve manter o gatilho legado por push de tag.'
             exit 1
           fi
 
