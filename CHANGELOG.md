@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - One-time GitHub Template Repository initializer that uses the real `dotnet new` engine, validates the generated repository, commits the canonical output, and removes bootstrap-only assets after successful initialization.
 - Maintenance E2E validation for GitHub Template initialization parity against direct `dotnet new` output.
 - NuGet Template Package foundation for `RodriOliveira.DotNet.Library.Template`, including content-only packaging, package metadata, package-content inspection, install-from-`.nupkg` E2E/parity validation, and release orchestration with Trusted Publishing while preserving the `Template.Library` placeholder publication guard.
+- Official template releases now publish `RodriOliveira.DotNet.Library.Template` to GitHub Packages as an authenticated mirror alongside NuGet.org and GitHub Releases.
 
 ### Changed
 
