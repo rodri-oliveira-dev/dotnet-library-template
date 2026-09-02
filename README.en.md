@@ -81,7 +81,8 @@ This path runs the .NET template engine, creates the `MyCompany.MyLibrary/` dire
 - manual releases through GitHub Actions with `publish=false` for validation and `publish=true` for official publication;
 - versioned release candidate with manifest and SHA-256 checksums before any external publication;
 - NuGet.org Trusted Publishing through GitHub OIDC with publication opted in by `publish=true` and `NUGET_USER`;
-- draft GitHub Release before NuGet and finalization only after successful publication.
+- template publication to NuGet.org, GitHub Packages, and GitHub Releases in official releases;
+- draft GitHub Release before external publication and finalization only after successful publication;
 - public NuGet Template Package `RodriOliveira.DotNet.Library.Template`, separate from the `Template.Library` placeholder package;
 - validation of the real template `.nupkg` before publication, including install, generation, and parity comparison against the local template.
 
@@ -129,6 +130,21 @@ When you need exact reproducibility across machines or builds, install a specifi
 
 ```bash
 dotnet new install RodriOliveira.DotNet.Library.Template@1.2.0
+```
+
+NuGet.org remains the primary public registry for consuming the template. Official releases also publish the same package to GitHub Packages at `https://nuget.pkg.github.com/rodri-oliveira-dev/index.json` for environments that prefer consuming packages through GitHub.
+
+To consume from GitHub Packages, configure an authenticated NuGet source with a GitHub token that has `read:packages`:
+
+```bash
+dotnet nuget add source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.json" \
+  --name github-rodri-oliveira-dev \
+  --username GITHUB_USERNAME \
+  --password GITHUB_PACKAGES_TOKEN \
+  --store-password-in-clear-text
+
+dotnet new install RodriOliveira.DotNet.Library.Template \
+  --add-source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.json"
 ```
 
 Generate a library:
@@ -380,7 +396,7 @@ The recommended manual-release flow is:
 
 Pull requests and manual runs with `publish=false` only build and validate the release candidate. They do not create tags, create GitHub Releases, request NuGet OIDC credentials, or run `dotnet nuget push`.
 
-With `publish=true`, the workflow requires `refs/heads/main`, rejects a conflicting existing tag before the expensive build, downloads the same candidate validated by the build job, verifies version, tag, commit, manifest, and SHA-256 checksums, attests the artifacts, creates or resumes a draft GitHub Release, publishes the package through NuGet Trusted Publishing/OIDC, and only then finalizes the GitHub Release. If NuGet publication fails, the release remains draft and the workflow fails.
+With `publish=true`, the workflow requires `refs/heads/main`, rejects a conflicting existing tag before the expensive build, downloads the same candidate validated by the build job, verifies version, tag, commit, manifest, and SHA-256 checksums, attests the artifacts, creates or resumes a draft GitHub Release, publishes the package through NuGet Trusted Publishing/OIDC, publishes the same `.nupkg` to GitHub Packages, and only then finalizes the GitHub Release. If any publication fails, the release remains draft and the workflow fails.
 
 ### NuGet.org Trusted Publishing
 
@@ -414,9 +430,19 @@ AND NUGET_USER is configured and non-empty
 
 If `NUGET_USER` is absent, empty, or whitespace-only, `publish=false` still works as validation. With `publish=true`, the run fails before external authentication because an official publication must be able to publish the validated package.
 
-The workflow creates or resumes a draft GitHub Release before NuGet so it can attach the validated artifacts. It is finalized only after NuGet publication succeeds, so the repository does not advertise a NuGet distribution that failed.
+The workflow creates or resumes a draft GitHub Release before external publication so it can attach the validated artifacts. It is finalized only after NuGet.org and GitHub Packages publication both succeed, so the repository does not advertise an incomplete distribution.
 
 The template does not use a long-lived `NUGET_API_KEY`.
+
+### GitHub Packages
+
+Official releases also publish `RodriOliveira.DotNet.Library.Template.<version>.nupkg` to GitHub Packages:
+
+```text
+https://nuget.pkg.github.com/rodri-oliveira-dev/index.json
+```
+
+This publication is an authenticated mirror for consumers that already use GitHub Packages. NuGet.org remains the primary public registry and the recommended path for `dotnet new install`.
 
 ### Placeholder publication guard
 
@@ -434,7 +460,7 @@ The main workflows have separate responsibilities:
 | `codeql.yml` | CodeQL analysis for C# |
 | `dependency-review.yml` | blocks newly introduced High/Critical vulnerabilities in pull requests |
 | `sonar.yml` | optional SonarQube Cloud analysis |
-| `release.yml` | release candidate validation, attestation, draft GitHub Release, NuGet Trusted Publishing, and release finalization |
+| `release.yml` | release candidate validation, attestation, draft GitHub Release, NuGet Trusted Publishing, GitHub Packages, and release finalization |
 | `template-validation.yml` | end-to-end `dotnet new` validation |
 | `template-package-validation.yml` | maintenance-only validation of the real NuGet Template Package |
 | `sonar-template-validation.yml` | validates the Sonar contract in generated output |

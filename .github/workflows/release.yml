@@ -311,6 +311,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      packages: write
       attestations: write
       artifact-metadata: write
 
@@ -458,6 +459,17 @@ jobs:
           "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"
           --source https://api.nuget.org/v3/index.json
           --api-key "$NUGET_API_KEY"
+          --skip-duplicate
+
+      - name: Publish template package to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: >-
+          dotnet nuget push
+          "artifacts/release/RodriOliveira.DotNet.Library.Template.${RELEASE_VERSION}.nupkg"
+          --source https://nuget.pkg.github.com/rodri-oliveira-dev/index.json
+          --api-key "$GITHUB_TOKEN"
           --skip-duplicate
 
       - name: Publish GitHub Release
