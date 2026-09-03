@@ -38,7 +38,8 @@ jobs:
         shell: bash
         run: |
           if [ -z "$INITIALIZE_REPOSITORY_TOKEN" ]; then
-            echo "::error::Configure repository secret INITIALIZE_REPOSITORY_TOKEN with Contents: write and Workflows: write before running this one-time initializer."
+            echo "::error::Configure repository secret INITIALIZE_REPOSITORY_TOKEN before running this one-time initializer."
+            echo "::error::For a fine-grained token, grant this repository Contents: write, Pull requests: write, and Workflows: write. For a classic PAT, grant repo and workflow scopes."
             exit 1
           fi
 
@@ -104,15 +105,67 @@ jobs:
 
           git commit -m "Initialize $PROJECT_NAME"
 
-      - name: Push initialization commit
+      - name: Push initialization branch
+        id: push
         env:
           INITIALIZE_REPOSITORY_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
+          PROJECT_NAME: ${{ inputs.project_name }}
         shell: bash
         run: |
+          slug="$(printf '%s' "$PROJECT_NAME" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+
+          if [ -z "$slug" ]; then
+            echo "::error::Could not derive an initialization branch name from project_name."
+            exit 1
+          fi
+
+          branch="initialize-repository/$slug"
           auth="$(printf 'x-access-token:%s' "$INITIALIZE_REPOSITORY_TOKEN" | base64 -w0)"
 
           if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
-            push origin "HEAD:$GITHUB_REF_NAME"; then
-            echo "::error::Could not push the initialization commit. Confirm INITIALIZE_REPOSITORY_TOKEN has Contents: write and Workflows: write, and that repository rulesets or branch protection allow this one-time update."
+            push --force-with-lease origin "HEAD:refs/heads/$branch"; then
+            echo "::error::Could not push the initialization branch. Confirm INITIALIZE_REPOSITORY_TOKEN has write access to this repository and permission to update workflow files. The initializer uses a pull request so default-branch branch protection and rulesets remain enforced."
             exit 1
           fi
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Create initialization pull request
+        env:
+          GH_TOKEN: ${{ secrets.INITIALIZE_REPOSITORY_TOKEN }}
+          INITIALIZE_BRANCH: ${{ steps.push.outputs.branch }}
+          PROJECT_NAME: ${{ inputs.project_name }}
+        shell: bash
+        run: |
+          existing_pr="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$INITIALIZE_BRANCH" \
+            --base "$GITHUB_REF_NAME" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -n "$existing_pr" ]; then
+            echo "Initialization pull request #$existing_pr is already open."
+            exit 0
+          fi
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$GITHUB_REF_NAME" \
+            --head "$INITIALIZE_BRANCH" \
+            --title "Initialize $PROJECT_NAME" \
+            --body "$(cat <<EOF
+## Summary
+
+Initializes this repository as \`$PROJECT_NAME\` using the canonical .NET library template engine.
+
+Before opening this pull request, the initializer successfully completed formatting, restore, build, tests, package generation, and package verification.
+
+## Merge guidance
+
+Merge this pull request after repository CI is green. The initialization intentionally removes template-maintenance-only assets and the one-time initializer itself from the generated product repository.
+EOF
+)"
