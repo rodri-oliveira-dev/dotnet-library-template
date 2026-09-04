@@ -85,6 +85,18 @@ O YAML concentra gatilhos, permissões e configuração. A lógica de reconcilia
 
 Manter a lógica de API e gestão de Issues fora do YAML facilita revisão e evolução sem transformar o workflow em um grande programa inline.
 
+### Análise e cobertura no Sonar
+
+O script de sincronização continua dentro do escopo de source analysis do Sonar. Portanto, regras JavaScript de manutenibilidade, confiabilidade, segurança, duplicação e arquitetura continuam podendo gerar findings para esse arquivo.
+
+A baseline não adiciona um toolchain npm nem geração de LCOV apenas para esse script de orquestração executado pelo GitHub Actions. Para não tratar a ausência de infraestrutura de cobertura JavaScript como código de produto descoberto, `sonar.yml` aplica a exclusão de cobertura mais específica possível:
+
+```text
+.github/scripts/sync-sonar-quality-issues.js
+```
+
+A propriedade usada é `sonar.coverage.exclusions`, e não `sonar.exclusions`; portanto o arquivo continua sendo analisado pelo Sonar. Se futuramente o script ganhar uma suíte real de testes JavaScript com relatório LCOV, remova essa exclusão de cobertura e importe o relatório no workflow.
+
 ## Execução manual
 
 Acesse:
