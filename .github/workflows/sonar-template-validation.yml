@@ -87,6 +87,7 @@ jobs:
           grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
           grep -Fq 'dotnet sonarscanner begin' "$workflow"
           grep -Fq '/d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"' "$workflow"
+          grep -Fq '/d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"
           grep -Fq '/d:sonar.qualitygate.wait=true' "$workflow"
           grep -Fq 'dotnet build Template.Library.slnx --configuration Release --no-restore --no-incremental' "$workflow"
           grep -Fq -- '--coverlet-output-format opencover' "$workflow"
@@ -116,6 +117,11 @@ jobs:
 
           if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
             echo "scripts/** não deve ser removido da análise Sonar."
+            exit 1
+          fi
+
+          if grep -Fq '/d:sonar.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"; then
+            echo "O sincronizador pode ser excluído de cobertura, mas deve continuar na análise de qualidade do Sonar."
             exit 1
           fi
 
@@ -217,6 +223,7 @@ jobs:
           grep -Fq 'vars.SONAR_ORGANIZATION' "$workflow"
           grep -Fq 'vars.SONAR_HOST_URL' "$workflow"
           grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
+          grep -Fq '/d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"
           grep -Fq 'Optional SonarQube Cloud analysis' "$readme"
 
           grep -Fq 'schedule:' "$sync_workflow"
@@ -232,6 +239,11 @@ jobs:
 
           if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
             echo "Saída gerada exclui scripts/** indevidamente da análise Sonar."
+            exit 1
+          fi
+
+          if grep -Fq '/d:sonar.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"; then
+            echo "Saída gerada removeu indevidamente o sincronizador da análise de qualidade do Sonar."
             exit 1
           fi
 
