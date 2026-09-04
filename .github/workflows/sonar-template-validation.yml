@@ -50,10 +50,18 @@ jobs:
         shell: bash
         run: |
           workflow='.github/workflows/sonar.yml'
+          sync_workflow='.github/workflows/sonar-quality-issues.yml'
+          sync_script='.github/scripts/sync-sonar-quality-issues.js'
+          sync_docs='docs/sonar-quality-issues.md'
+          sync_docs_pt='docs/sonar-quality-issues.pt-BR.md'
           manifest='.config/dotnet-tools.json'
           resolver='scripts/resolve-sonar-project-version.sh'
 
           test -s "$workflow"
+          test -s "$sync_workflow"
+          test -s "$sync_script"
+          test -s "$sync_docs"
+          test -s "$sync_docs_pt"
           test -s "$manifest"
           test -s "$resolver"
 
@@ -79,18 +87,47 @@ jobs:
           grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
           grep -Fq 'dotnet sonarscanner begin' "$workflow"
           grep -Fq '/d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"' "$workflow"
+          grep -Fq '/d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"
           grep -Fq '/d:sonar.qualitygate.wait=true' "$workflow"
           grep -Fq 'dotnet build Template.Library.slnx --configuration Release --no-restore --no-incremental' "$workflow"
           grep -Fq -- '--coverlet-output-format opencover' "$workflow"
           grep -Fq 'dotnet sonarscanner end' "$workflow"
+
+          grep -Fq 'schedule:' "$sync_workflow"
+          grep -Fq 'workflow_dispatch:' "$sync_workflow"
+          grep -Fq 'contents: read' "$sync_workflow"
+          grep -Fq 'issues: write' "$sync_workflow"
+          grep -Fq 'secrets.SONAR_TOKEN' "$sync_workflow"
+          grep -Fq 'vars.SONAR_PROJECT_KEY' "$sync_workflow"
+          grep -Fq 'vars.SONAR_HOST_URL' "$sync_workflow"
+          grep -Fq 'vars.SONAR_ISSUE_LABEL' "$sync_workflow"
+          grep -Fq 'github.repository_owner' "$sync_workflow"
+          grep -Fq 'github.event.repository.name' "$sync_workflow"
+          grep -Fq 'https://sonarcloud.io' "$sync_workflow"
+          grep -Fq 'persist-credentials: false' "$sync_workflow"
+          grep -Fq 'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3' "$sync_workflow"
+          grep -Fq "require('./.github/scripts/sync-sonar-quality-issues.js')" "$sync_workflow"
+          grep -Fq "issueStatuses: 'OPEN'" "$sync_script"
+          grep -Fq "impactSeverities: 'BLOCKER,HIGH'" "$sync_script"
+          grep -Fq "state: 'closed'" "$sync_script"
+          grep -Fq "state: needsReopen ? 'open' : undefined" "$sync_script"
+          grep -Fq 'sonar-issue-key:' "$sync_script"
+          grep -Fq 'github-actions[bot]' "$sync_script"
+          node --check "$sync_script"
 
           if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
             echo "scripts/** não deve ser removido da análise Sonar."
             exit 1
           fi
 
-          if grep -Eq 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$workflow"; then
-            echo "Workflow Sonar contém identidade específica do source repository."
+          if grep -Fq '/d:sonar.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"; then
+            echo "O sincronizador pode ser excluído de cobertura, mas deve continuar na análise de qualidade do Sonar."
+            exit 1
+          fi
+
+          if grep -E -q 'rodri-oliveira-dev_(dotnet-library-template|complexity-analyzers)|rodri-oliveira-dev/(dotnet-library-template|complexity-analyzers)' \
+            "$workflow" "$sync_workflow" "$sync_script" "$sync_docs" "$sync_docs_pt"; then
+            echo "Integração Sonar contém identidade específica de um source repository."
             exit 1
           fi
 
@@ -163,11 +200,15 @@ jobs:
         shell: bash
         run: |
           workflow="$GENERATED_ROOT/.github/workflows/sonar.yml"
+          sync_workflow="$GENERATED_ROOT/.github/workflows/sonar-quality-issues.yml"
+          sync_script="$GENERATED_ROOT/.github/scripts/sync-sonar-quality-issues.js"
           manifest="$GENERATED_ROOT/.config/dotnet-tools.json"
           resolver="$GENERATED_ROOT/scripts/resolve-sonar-project-version.sh"
           readme="$GENERATED_ROOT/README.md"
 
           test -s "$workflow"
+          test -s "$sync_workflow"
+          test -s "$sync_script"
           test -s "$manifest"
           test -s "$resolver"
           test -s "$readme"
@@ -182,16 +223,33 @@ jobs:
           grep -Fq 'vars.SONAR_ORGANIZATION' "$workflow"
           grep -Fq 'vars.SONAR_HOST_URL' "$workflow"
           grep -Fq 'scripts/resolve-sonar-project-version.sh' "$workflow"
+          grep -Fq '/d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"
           grep -Fq 'Optional SonarQube Cloud analysis' "$readme"
+
+          grep -Fq 'schedule:' "$sync_workflow"
+          grep -Fq 'workflow_dispatch:' "$sync_workflow"
+          grep -Fq 'issues: write' "$sync_workflow"
+          grep -Fq 'vars.SONAR_PROJECT_KEY' "$sync_workflow"
+          grep -Fq 'vars.SONAR_HOST_URL' "$sync_workflow"
+          grep -Fq 'vars.SONAR_ISSUE_LABEL' "$sync_workflow"
+          grep -Fq "require('./.github/scripts/sync-sonar-quality-issues.js')" "$sync_workflow"
+          grep -Fq "impactSeverities: 'BLOCKER,HIGH'" "$sync_script"
+          grep -Fq "state: 'closed'" "$sync_script"
+          node --check "$sync_script"
 
           if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
             echo "Saída gerada exclui scripts/** indevidamente da análise Sonar."
             exit 1
           fi
 
-          if grep -R -I -n -E 'rodri-oliveira-dev_dotnet-library-template|rodri-oliveira-dev/dotnet-library-template' "$GENERATED_ROOT" \
+          if grep -Fq '/d:sonar.exclusions=".github/scripts/sync-sonar-quality-issues.js"' "$workflow"; then
+            echo "Saída gerada removeu indevidamente o sincronizador da análise de qualidade do Sonar."
+            exit 1
+          fi
+
+          if grep -R -I -n -E 'rodri-oliveira-dev_(dotnet-library-template|complexity-analyzers)|rodri-oliveira-dev/(dotnet-library-template|complexity-analyzers)' "$GENERATED_ROOT" \
             --exclude-dir=.git --exclude-dir=bin --exclude-dir=obj --exclude-dir=artifacts; then
-            echo "Identidade Sonar do source repository vazou para a saída gerada."
+            echo "Identidade Sonar de source repository vazou para a saída gerada."
             exit 1
           fi
 

@@ -1,0 +1,494 @@
+'use strict';
+
+module.exports = async ({ github, context, core }) => {
+  const { owner, repo } = context.repo;
+  const sonarHost = requiredEnv('SONAR_HOST_URL').replace(/\/+$/, '');
+  const projectKey = requiredEnv('SONAR_PROJECT_KEY');
+  const labelName = requiredEnv('SONAR_ISSUE_LABEL');
+  const sonarToken = requiredEnv('SONAR_TOKEN');
+  const workflowAuthor = 'github-actions[bot]';
+  const trackedSeverities = new Set(['BLOCKER', 'HIGH']);
+  const severityRank = new Map([
+    ['BLOCKER', 2],
+    ['HIGH', 1],
+  ]);
+  const syncStart = '<!-- sonar-sync:start -->';
+  const syncEnd = '<!-- sonar-sync:end -->';
+
+  core.setSecret(sonarToken);
+
+  function requiredEnv(name) {
+    const value = process.env[name];
+    if (!value) {
+      throw new Error(`${name} is required.`);
+    }
+
+    return value;
+  }
+
+  async function sonarGet(path, params) {
+    const url = new URL(`${sonarHost}${path}`);
+
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${sonarToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const responseBody = await response.text();
+      throw new Error(
+        `Sonar API ${path} failed with HTTP ${response.status}: ${responseBody.slice(0, 500)}`,
+      );
+    }
+
+    return response.json();
+  }
+
+  function markdownInline(value) {
+    return String(value ?? '')
+      .replace(/\r?\n/g, ' ')
+      .replace(/`/g, '\\`');
+  }
+
+  function quoteMarkdown(value) {
+    return String(value ?? 'Sem mensagem fornecida pelo Sonar.')
+      .split(/\r?\n/)
+      .map((line) => `> ${line}`)
+      .join('\n');
+  }
+
+  function componentPath(component) {
+    const prefix = `${projectKey}:`;
+    return component?.startsWith(prefix)
+      ? component.slice(prefix.length)
+      : component ?? 'Componente não informado';
+  }
+
+  function encodeRepositoryPath(path) {
+    return path
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+  }
+
+  function managedBody(existingBody, nextManagedBody) {
+    if (!existingBody) {
+      return [
+        nextManagedBody,
+        '',
+        '<!-- Anotações manuais podem ser adicionadas abaixo. Esta área é preservada pelo workflow. -->',
+        '',
+      ].join('\n');
+    }
+
+    const startIndex = existingBody.indexOf(syncStart);
+    const endIndex = existingBody.indexOf(syncEnd);
+
+    if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+      return existingBody;
+    }
+
+    const suffixStart = endIndex + syncEnd.length;
+    return `${existingBody.slice(0, startIndex)}${nextManagedBody}${existingBody.slice(suffixStart)}`;
+  }
+
+  function extractManagedSonarIssueKey(githubIssue) {
+    if (githubIssue.pull_request) {
+      return null;
+    }
+
+    if (githubIssue.user?.login !== workflowAuthor) {
+      return null;
+    }
+
+    const body = githubIssue.body ?? '';
+    const startIndex = body.indexOf(syncStart);
+    if (startIndex === -1) {
+      return null;
+    }
+
+    const endIndex = body.indexOf(syncEnd, startIndex + syncStart.length);
+    if (endIndex === -1 || endIndex < startIndex) {
+      return null;
+    }
+
+    const managedSection = body.slice(startIndex, endIndex + syncEnd.length);
+    const match = managedSection.match(/<!--\s*sonar-issue-key:([^\s>]+)\s*-->/);
+    return match?.[1] ?? null;
+  }
+
+  function hasManagedLabel(githubIssue) {
+    return (githubIssue.labels ?? []).some((label) =>
+      typeof label === 'string' ? label === labelName : label?.name === labelName,
+    );
+  }
+
+  async function ensureLabel() {
+    try {
+      await github.rest.issues.getLabel({ owner, repo, name: labelName });
+      return;
+    } catch (error) {
+      if (error.status !== 404) {
+        throw error;
+      }
+    }
+
+    await github.rest.issues.createLabel({
+      owner,
+      repo,
+      name: labelName,
+      color: 'b60205',
+      description: 'High-impact quality findings synchronized from SonarQube Cloud',
+    });
+  }
+
+  const repository = await github.rest.repos.get({ owner, repo });
+  const defaultBranch = repository.data.default_branch;
+  const sonarIssues = [];
+  const rules = new Map();
+  const pageSize = 500;
+
+  for (let page = 1; page <= 100; page += 1) {
+    const response = await sonarGet('/api/issues/search', {
+      componentKeys: projectKey,
+      issueStatuses: 'OPEN',
+      impactSeverities: 'BLOCKER,HIGH',
+      additionalFields: '_all',
+      ps: pageSize,
+      p: page,
+    });
+
+    const pageIssues = response.issues ?? [];
+    sonarIssues.push(...pageIssues);
+
+    for (const rule of response.rules ?? []) {
+      if (rule.key) {
+        rules.set(rule.key, rule);
+      }
+    }
+
+    const total = response.paging?.total ?? response.total ?? sonarIssues.length;
+    if (sonarIssues.length >= total || pageIssues.length < pageSize) {
+      break;
+    }
+
+    if (page === 100) {
+      throw new Error('Sonar issue pagination exceeded the 100-page safety limit.');
+    }
+  }
+
+  const findings = sonarIssues.map((issue) => {
+    const qualifyingImpacts = (issue.impacts ?? []).filter((impact) =>
+      trackedSeverities.has(impact.severity),
+    );
+
+    if (qualifyingImpacts.length === 0) {
+      throw new Error(
+        `Sonar returned issue ${issue.key} for impactSeverities=BLOCKER,HIGH without a matching impacts entry.`,
+      );
+    }
+
+    return { issue, qualifyingImpacts };
+  });
+
+  await ensureLabel();
+
+  const repositoryIssues = await github.paginate(github.rest.issues.listForRepo, {
+    owner,
+    repo,
+    state: 'all',
+    per_page: 100,
+  });
+
+  const existingBySonarKey = new Map();
+
+  for (const githubIssue of repositoryIssues) {
+    const sonarKey = extractManagedSonarIssueKey(githubIssue);
+    if (!sonarKey) {
+      continue;
+    }
+
+    if (existingBySonarKey.has(sonarKey)) {
+      core.warning(
+        `Multiple workflow-managed GitHub issues reference Sonar issue ${sonarKey}. Keeping #${existingBySonarKey.get(sonarKey).number}.`,
+      );
+      continue;
+    }
+
+    existingBySonarKey.set(sonarKey, githubIssue);
+  }
+
+  const qualifyingKeys = new Set(findings.map(({ issue }) => issue.key));
+  let created = 0;
+  let updated = 0;
+  let reopened = 0;
+  let closed = 0;
+  let unchanged = 0;
+  let labelsRestored = 0;
+
+  for (const { issue, qualifyingImpacts } of findings) {
+    const maxSeverity = qualifyingImpacts
+      .map((impact) => impact.severity)
+      .sort(
+        (left, right) =>
+          (severityRank.get(right) ?? 0) - (severityRank.get(left) ?? 0),
+      )[0];
+
+    const affectedQualities = [
+      ...new Set(
+        qualifyingImpacts
+          .map((impact) => impact.softwareQuality)
+          .filter(Boolean),
+      ),
+    ];
+
+    const rule = rules.get(issue.rule);
+    const ruleName = rule?.name ?? issue.rule;
+    const path = componentPath(issue.component);
+    const line = issue.line ?? issue.textRange?.startLine ?? null;
+    const endLine = issue.textRange?.endLine ?? line;
+    const locationLabel = line
+      ? `${path}:${line}${endLine && endLine !== line ? `-${endLine}` : ''}`
+      : path;
+
+    const fileUrl =
+      `https://github.com/${owner}/${repo}/blob/` +
+      `${encodeURIComponent(defaultBranch)}/${encodeRepositoryPath(path)}` +
+      `${line ? `#L${line}` : ''}`;
+
+    const sonarIssueUrl =
+      `${sonarHost}/project/issues?open=${encodeURIComponent(issue.key)}` +
+      `&id=${encodeURIComponent(projectKey)}`;
+
+    const sonarRuleUrl =
+      `${sonarHost}/coding_rules?open=${encodeURIComponent(issue.rule)}` +
+      `&rule_key=${encodeURIComponent(issue.rule)}`;
+
+    const projectIssuesUrl =
+      `${sonarHost}/project/issues?impactSeverities=BLOCKER%2CHIGH` +
+      `&issueStatuses=OPEN&id=${encodeURIComponent(projectKey)}`;
+
+    const relatedLocations = (issue.flows ?? [])
+      .flatMap((flow) => flow.locations ?? [])
+      .slice(0, 5)
+      .map((location) => {
+        const relatedPath = componentPath(location.component);
+        const relatedLine = location.textRange?.startLine ?? null;
+        const relatedFileUrl =
+          `https://github.com/${owner}/${repo}/blob/` +
+          `${encodeURIComponent(defaultBranch)}/${encodeRepositoryPath(relatedPath)}` +
+          `${relatedLine ? `#L${relatedLine}` : ''}`;
+        const relatedLabel = relatedLine
+          ? `${relatedPath}:${relatedLine}`
+          : relatedPath;
+        const relatedMessage = location.msg
+          ? ` — ${markdownInline(location.msg)}`
+          : '';
+
+        return `- [\`${markdownInline(relatedLabel)}\`](${relatedFileUrl})${relatedMessage}`;
+      });
+
+    const impactText = qualifyingImpacts
+      .map(
+        (impact) =>
+          `\`${markdownInline(impact.softwareQuality ?? 'UNKNOWN')}\`: **${markdownInline(impact.severity)}**`,
+      )
+      .join(', ');
+
+    const tags =
+      (issue.tags ?? []).length > 0
+        ? issue.tags.map((tag) => `\`${markdownInline(tag)}\``).join(', ')
+        : 'Não informadas';
+
+    const managedLines = [
+      syncStart,
+      `<!-- sonar-issue-key:${issue.key} -->`,
+      '> Sincronizada automaticamente do SonarQube Cloud. Enquanto o finding permanecer **OPEN** com impacto **HIGH** ou **BLOCKER**, esta issue representa o mesmo problema.',
+      '',
+      '## Resumo',
+      '',
+      `- **Impacto:** ${impactText}`,
+      `- **Qualidade afetada:** ${
+        affectedQualities.length > 0
+          ? affectedQualities.map((quality) => `\`${markdownInline(quality)}\``).join(', ')
+          : 'Não informada'
+      }`,
+      `- **Regra:** [${markdownInline(ruleName)} (\`${markdownInline(issue.rule)}\`)](${sonarRuleUrl})`,
+      `- **Clean Code attribute:** ${
+        issue.cleanCodeAttribute
+          ? `\`${markdownInline(issue.cleanCodeAttribute)}\``
+          : 'Não informado'
+      }`,
+      `- **Categoria:** ${
+        issue.cleanCodeAttributeCategory
+          ? `\`${markdownInline(issue.cleanCodeAttributeCategory)}\``
+          : 'Não informada'
+      }`,
+      `- **Localização:** [\`${markdownInline(locationLabel)}\`](${fileUrl})`,
+      `- **Esforço estimado:** ${
+        issue.effort ? `\`${markdownInline(issue.effort)}\`` : 'Não informado'
+      }`,
+      `- **Quick fix indicado pelo Sonar:** ${
+        issue.quickFixAvailable === true
+          ? 'Sim'
+          : issue.quickFixAvailable === false
+            ? 'Não'
+            : 'Não informado'
+      }`,
+      `- **Tags:** ${tags}`,
+      `- **Criada no Sonar:** ${
+        issue.creationDate ? `\`${markdownInline(issue.creationDate)}\`` : 'Não informado'
+      }`,
+      `- **Atualizada no Sonar:** ${
+        issue.updateDate ? `\`${markdownInline(issue.updateDate)}\`` : 'Não informado'
+      }`,
+      '',
+      '## Diagnóstico do Sonar',
+      '',
+      quoteMarkdown(issue.message),
+      '',
+      '## Orientação para correção',
+      '',
+      '1. Abra o finding original no Sonar e confirme a localização primária e eventuais fluxos/localizações secundárias.',
+      `2. Leia a regra **${markdownInline(ruleName)}** e identifique a causa raiz, evitando apenas silenciar o diagnóstico.`,
+      '3. Aplique a menor alteração que elimine o problema sem alterar comportamento não relacionado.',
+      '4. Adicione ou ajuste testes quando a correção afetar comportamento, contratos ou cenários de borda.',
+      '5. Execute build e testes relevantes localmente e confirme que não surgiram regressões.',
+      '6. Reexecute a análise do Sonar; o finding deve deixar de permanecer OPEN quando a correção for reconhecida.',
+    ];
+
+    if (relatedLocations.length > 0) {
+      managedLines.push('', '## Localizações relacionadas', '', ...relatedLocations);
+    }
+
+    managedLines.push(
+      '',
+      '## Links',
+      '',
+      `- [Abrir este finding no Sonar](${sonarIssueUrl})`,
+      `- [Abrir a regra no Sonar](${sonarRuleUrl})`,
+      `- [Ver todos os findings HIGH/BLOCKER do projeto](${projectIssuesUrl})`,
+      '',
+      syncEnd,
+    );
+
+    const managed = managedLines.join('\n');
+    const qualityPrefix =
+      affectedQualities.length > 0 ? `[${affectedQualities.join('/')}]` : '';
+    const rawTitle = `[Sonar][${maxSeverity}]${qualityPrefix} ${ruleName}`;
+    const title = rawTitle.length <= 240 ? rawTitle : `${rawTitle.slice(0, 237)}...`;
+    const existing = existingBySonarKey.get(issue.key);
+
+    if (!existing) {
+      const createdIssue = await github.rest.issues.create({
+        owner,
+        repo,
+        title,
+        body: managedBody('', managed),
+        labels: [labelName],
+      });
+
+      existingBySonarKey.set(issue.key, createdIssue.data);
+      core.info(
+        `Created GitHub issue #${createdIssue.data.number} for Sonar issue ${issue.key}.`,
+      );
+      created += 1;
+      continue;
+    }
+
+    const nextBody = managedBody(existing.body ?? '', managed);
+    const needsUpdate = existing.title !== title || existing.body !== nextBody;
+    const needsReopen = existing.state === 'closed';
+    const hasLabel = hasManagedLabel(existing);
+
+    if (needsUpdate || needsReopen) {
+      await github.rest.issues.update({
+        owner,
+        repo,
+        issue_number: existing.number,
+        title,
+        body: nextBody,
+        state: needsReopen ? 'open' : undefined,
+      });
+
+      updated += 1;
+      if (needsReopen) {
+        reopened += 1;
+      }
+    }
+
+    if (!hasLabel) {
+      await github.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: existing.number,
+        labels: [labelName],
+      });
+      labelsRestored += 1;
+    }
+
+    if (!needsUpdate && !needsReopen && hasLabel) {
+      unchanged += 1;
+    }
+  }
+
+  for (const [sonarKey, githubIssue] of existingBySonarKey) {
+    if (qualifyingKeys.has(sonarKey)) {
+      continue;
+    }
+
+    if (!hasManagedLabel(githubIssue)) {
+      await github.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: githubIssue.number,
+        labels: [labelName],
+      });
+      labelsRestored += 1;
+    }
+
+    if (githubIssue.state === 'open') {
+      await github.rest.issues.update({
+        owner,
+        repo,
+        issue_number: githubIssue.number,
+        state: 'closed',
+        state_reason: 'completed',
+      });
+
+      core.info(
+        `Closed GitHub issue #${githubIssue.number}; Sonar issue ${sonarKey} is no longer OPEN with HIGH/BLOCKER impact.`,
+      );
+      closed += 1;
+    }
+  }
+
+  core.info(
+    `Sonar sync complete: ${findings.length} qualifying finding(s), ${created} created, ${updated} updated, ${reopened} reopened, ${closed} closed, ${unchanged} unchanged, ${labelsRestored} label(s) restored.`,
+  );
+
+  await core.summary
+    .addHeading('Sonar Quality Issues sync')
+    .addTable([
+      [
+        { data: 'Metric', header: true },
+        { data: 'Count', header: true },
+      ],
+      ['Qualifying HIGH/BLOCKER findings', String(findings.length)],
+      ['Created', String(created)],
+      ['Updated', String(updated)],
+      ['Reopened', String(reopened)],
+      ['Closed', String(closed)],
+      ['Unchanged', String(unchanged)],
+      ['Managed labels restored', String(labelsRestored)],
+    ])
+    .write();
+};
