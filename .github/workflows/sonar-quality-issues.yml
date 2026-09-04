@@ -1,0 +1,74 @@
+name: Sync Sonar Quality Issues
+
+on:
+  schedule:
+    # Mondays at 09:17 America/Sao_Paulo (12:17 UTC).
+    # Avoiding the top of the hour reduces GitHub Actions schedule congestion.
+    - cron: "17 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sonar-quality-issues-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync high-impact Sonar issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || format('{0}_{1}', github.repository_owner, github.event.repository.name) }}
+      SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+      SONAR_ISSUE_LABEL: ${{ vars.SONAR_ISSUE_LABEL || 'Sonar Quality Issues' }}
+
+    steps:
+      - name: SonarQube Cloud issue sync disabled
+        if: ${{ env.SONAR_TOKEN == '' }}
+        shell: bash
+        run: |
+          echo "SONAR_TOKEN is not configured; Sonar quality issue synchronization was skipped."
+
+      - name: Checkout
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Validate Sonar configuration
+        if: ${{ env.SONAR_TOKEN != '' }}
+        shell: bash
+        run: |
+          if [ -z "$SONAR_PROJECT_KEY" ]; then
+            echo "SONAR_PROJECT_KEY could not be resolved. Configure the SONAR_PROJECT_KEY repository variable."
+            exit 1
+          fi
+
+          if [ -z "$SONAR_HOST_URL" ]; then
+            echo "SONAR_HOST_URL could not be resolved. Configure the SONAR_HOST_URL repository variable."
+            exit 1
+          fi
+
+          if [ -z "$SONAR_ISSUE_LABEL" ]; then
+            echo "SONAR_ISSUE_LABEL could not be resolved. Configure the SONAR_ISSUE_LABEL repository variable."
+            exit 1
+          fi
+
+          echo "Sonar project key: $SONAR_PROJECT_KEY"
+          echo "Sonar host: $SONAR_HOST_URL"
+          echo "Managed issue label: $SONAR_ISSUE_LABEL"
+
+      - name: Sync Sonar findings to GitHub issues
+        if: ${{ env.SONAR_TOKEN != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const sync = require('./.github/scripts/sync-sonar-quality-issues.js');
+            await sync({ github, context, core });
