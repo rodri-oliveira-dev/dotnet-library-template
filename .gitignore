@@ -36,6 +36,31 @@ project.fragment.lock.json
 *.nupkg
 *.snupkg
 
+# Ambiente local e secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.secrets/
+
+# Credenciais locais e material criptográfico privado
+credentials.json
+service-account*.json
+*.key
+*.p8
+*.p12
+*.pfx
+
+# Configuração local da aplicação
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Ferramentas e diretórios locais
+.tools/
+tmp/
+temp/
+
 # Logs e arquivos temporários
 *.log
 *.tmp
