@@ -142,7 +142,6 @@ dotnet nuget add source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.j
   --username GITHUB_USERNAME \
   --password GITHUB_PACKAGES_TOKEN \
   --store-password-in-clear-text
-
 dotnet new install RodriOliveira.DotNet.Library.Template \
   --add-source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.json"
 ```
@@ -227,19 +226,21 @@ After a successful initialization:
 - template-maintenance-only files are removed;
 - `docs/library-readme.md` becomes the generated library `README.md`;
 - the `Initialize repository` workflow and its helper remove themselves;
-- normal development continues with the generated library workflows.
+- changes are pushed to `initialize-repository/<project>`;
+- the workflow opens a pull request to the default branch, preserving rulesets and branch protection;
+- normal development continues after that pull request is merged.
 
-Run this workflow before normal development starts in the new repository. It must run from the default branch and fails if it is executed in the source template repository `rodri-oliveira-dev/dotnet-library-template`.
+Run this workflow before normal development starts in the new repository. It must be started from the default branch and fails if it is executed in the source template repository `rodri-oliveira-dev/dotnet-library-template`.
 
 ### Prerequisites and expected failures
 
 - GitHub Actions must be enabled in the new repository;
 - configure repository secret `INITIALIZE_REPOSITORY_TOKEN` before running the workflow;
-- that token should be temporary and have the minimum target-repository permissions: `Contents: write` and `Workflows: write`;
+- that token should be temporary and have these target-repository permissions: **Contents: Read and write**, **Pull requests: Read and write**, and **Workflows: Read and write**;
 - remove or revoke `INITIALIZE_REPOSITORY_TOKEN` after successful initialization;
-- organization rulesets or branch protection may block the `INITIALIZE_REPOSITORY_TOKEN` push;
+- rulesets may block creation/update of the initialization branch or opening/merging the pull request;
 - if validation, build, tests, or packaging fail, the workflow should not commit or push a partial initialization;
-- if the push is blocked, adjust the repository rules or use an approved equivalent process without weakening security automatically.
+- if an operation is blocked, adjust the repository rules or use an approved equivalent process without weakening security automatically.
 
 ### How to create `INITIALIZE_REPOSITORY_TOKEN`
 
@@ -256,6 +257,7 @@ Create the token from a GitHub account with administrative access to the destina
 7. under **Repository access**, choose **Only select repositories** and select only the repository that will be initialized;
 8. under **Repository permissions**, configure:
    - **Contents** → **Read and write**;
+   - **Pull requests** → **Read and write**;
    - **Workflows** → **Read and write**;
 9. generate the token and copy the displayed value. GitHub may not show it again.
 
@@ -273,7 +275,7 @@ INITIALIZE_REPOSITORY_TOKEN
 5. save the secret;
 6. run **Actions** → **Initialize repository** → **Run workflow**.
 
-The token needs `Contents: write` because the initializer creates and replaces repository files, and `Workflows: write` because initialization also removes/replaces files under `.github/workflows`.
+The token needs `Contents: Read and write` because the initializer creates and pushes the generated initialization branch, `Pull requests: Read and write` because it automatically opens the initialization pull request, and `Workflows: Read and write` because initialization also removes/replaces files under `.github/workflows`.
 
 After a successful initialization, delete repository secret `INITIALIZE_REPOSITORY_TOKEN` and revoke or delete the PAT under **Settings** → **Developer settings** → **Personal access tokens** → **Fine-grained tokens**. Do not reuse this token as a permanent CI credential and do not store it in version-controlled files.
 
@@ -282,7 +284,8 @@ After a successful initialization, delete repository secret `INITIALIZE_REPOSITO
 #### `Configure repository secret INITIALIZE_REPOSITORY_TOKEN...`
 
 ```text
-Configure repository secret INITIALIZE_REPOSITORY_TOKEN with Contents: write and Workflows: write before running this one-time initializer.
+Configure repository secret INITIALIZE_REPOSITORY_TOKEN before running this one-time initializer.
+For a fine-grained token, grant this repository Contents: write, Pull requests: write, and Workflows: write.
 ```
 
 The workflow did not receive the secret. Confirm it was created under **Settings** → **Secrets and variables** → **Actions** in the **generated repository**, using the exact name `INITIALIZE_REPOSITORY_TOKEN`. Secrets from the source template repository are not copied into newly created repositories.
@@ -313,9 +316,17 @@ If it still occurs:
 - confirm the secret contains the complete PAT without extra whitespace;
 - if the repository copy contains an older initializer, update the workflow before running it again.
 
-#### Push rejected by a ruleset or branch protection
+#### `Resource not accessible by personal access token (createPullRequest)`
 
-The PAT may be valid while GitHub still rejects a push to the default branch. Review repository/organization rulesets and branch protection in that case. Temporarily authorize the actor/token for initialization or use an approved equivalent process. Do not permanently disable protections just to bypass the initializer.
+```text
+pull request create failed: GraphQL: Resource not accessible by personal access token (createPullRequest)
+```
+
+This error means generation and the branch push may already have succeeded, but the PAT cannot create the pull request. Edit or recreate the Fine-grained PAT and grant **Pull requests → Read and write** for the destination repository. Then update repository secret `INITIALIZE_REPOSITORY_TOKEN` and run the initializer again, or manually open the pull request from the existing `initialize-repository/<project>` branch.
+
+#### Operation rejected by a ruleset or branch protection
+
+The initializer does not write directly to the default branch: it pushes `initialize-repository/<project>` and opens a pull request. Rulesets can still restrict creation/update of that branch or prevent merge until required checks succeed. Adjust only the necessary rules or follow the normal review process; do not permanently disable protections just to bypass the initializer.
 
 #### Format, build, test, pack, or package-validation failure
 
