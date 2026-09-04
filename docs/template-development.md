@@ -64,7 +64,6 @@ To build and inspect the template package locally:
 dotnet pack packaging/RodriOliveira.DotNet.Library.Template.csproj \
   --configuration Release \
   --output artifacts/templates
-
 dotnet run --file scripts/verify-template-package.cs -- artifacts/templates \
   --expected-version 1.0.0
 ```
@@ -146,7 +145,7 @@ They must stay excluded from direct `dotnet new` output. In a repository created
 - validate the final destination tree after replacement;
 - return a non-zero exit code for every rejected or ambiguous state.
 
-`.github/workflows/initialize-repository.yml` orchestrates the GitHub path. Its `GITHUB_TOKEN` permission is limited to `contents: read`, and the final push requires repository secret `INITIALIZE_REPOSITORY_TOKEN` with target-repository `Contents: write` and `Workflows: write`. That explicit token is necessary because a successful initialization removes workflow files, and GitHub rejects workflow-file changes from credentials without workflow-write permission. The workflow keeps checkout credentials from being persisted, fails before generation when the initialization token is missing, invokes the helper, runs locked restore, format verification, Release build, tests, pack, package verification, commits the generated changes, and pushes to the selected default branch. The workflow should fail with actionable output when the token, rulesets, or branch protection prevent that one-time push; it must not weaken repository security settings automatically.
+`.github/workflows/initialize-repository.yml` orchestrates the GitHub path. Its `GITHUB_TOKEN` permission is limited to `contents: read`, while repository secret `INITIALIZE_REPOSITORY_TOKEN` must grant the target repository `Contents: Read and write`, `Pull requests: Read and write`, and `Workflows: Read and write`. `Contents` permission is required to push the generated initialization branch, `Pull requests` permission is required because the initializer opens the initialization pull request automatically, and `Workflows` permission is required because the generated commit removes or replaces workflow files. The workflow keeps checkout credentials from being persisted, fails before generation when the initialization token is missing, invokes the helper, runs locked restore, format verification, Release build, tests, pack, package verification, commits the generated changes, pushes them to `initialize-repository/<project>`, and opens a pull request back to the selected default branch. The workflow should fail with actionable output when the token permissions or repository rules prevent either the branch push or pull request creation; it must not weaken repository security settings automatically.
 
 `.github/workflows/github-template-initialization-validation.yml` is the E2E parity test. It should:
 

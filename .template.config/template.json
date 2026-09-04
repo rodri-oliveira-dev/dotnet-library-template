@@ -35,6 +35,8 @@
         ".github/workflows/release.yml",
         "docs/template-development.md",
         "docs/repository-administration.md",
+        "docs/project-identity.md",
+        "docs/project-identity.pt-BR.md",
         "packaging/**",
         ".github/workflows/template-package-validation.yml",
         ".github/workflows/initialize-repository.yml",
