@@ -85,6 +85,18 @@ The workflow YAML contains triggers, permissions and configuration. Reconciliati
 
 Keeping the API and issue-management logic outside the YAML makes it easier to review and evolve without turning the workflow file into a large embedded program.
 
+### Sonar analysis and coverage
+
+The synchronization script remains in Sonar's source analysis, so JavaScript maintainability, reliability, security, duplication and architecture checks can still report findings against it.
+
+The baseline does not currently introduce an npm test toolchain or LCOV generation only for this GitHub-hosted orchestration script. To avoid treating the absence of JavaScript coverage infrastructure as uncovered product code, `sonar.yml` uses the narrow coverage-only exclusion:
+
+```text
+.github/scripts/sync-sonar-quality-issues.js
+```
+
+This is configured through `sonar.coverage.exclusions`, not `sonar.exclusions`; the script is still analyzed by Sonar. If the script later gains a real JavaScript test suite with LCOV reporting, remove this coverage exclusion and import that report instead.
+
 ## Manual execution
 
 Open:
