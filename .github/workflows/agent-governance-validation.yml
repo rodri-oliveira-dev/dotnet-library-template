@@ -1,0 +1,135 @@
+name: Agent governance validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'AGENTS.md'
+      - '.agents/**'
+      - '.template.config/template.json'
+      - '.github/workflows/agent-governance-validation.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'AGENTS.md'
+      - '.agents/**'
+      - '.template.config/template.json'
+      - '.github/workflows/agent-governance-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-governance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-agent-baseline:
+    name: Validate agent baseline and generated template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Configure .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate agent governance source files
+        shell: bash
+        run: |
+          required=(
+            "AGENTS.md"
+            ".agents/skills/dotnet-issue-implementation/SKILL.md"
+            ".agents/skills/dotnet-bug-investigation/SKILL.md"
+            ".agents/skills/dotnet-pr-review/SKILL.md"
+            ".agents/skills/dotnet-security-review/SKILL.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
+          )
+
+          for file in "${required[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "Required agent governance file is missing or empty: $file"
+              exit 1
+            fi
+          done
+
+          grep -Fq '## Gerenciamento de contexto' AGENTS.md
+          grep -Fq '350 linhas' AGENTS.md
+          grep -Fq '## Roteamento de tarefas e delegação' AGENTS.md
+          grep -Fq 'Validação determinística prevalece' AGENTS.md
+          grep -Fq 'dotnet-issue-implementation' AGENTS.md
+          grep -Fq 'dotnet-bug-investigation' AGENTS.md
+          grep -Fq 'dotnet-pr-review' AGENTS.md
+          grep -Fq 'dotnet-security-review' AGENTS.md
+          grep -Fq 'dotnet restore --locked-mode' AGENTS.md
+          grep -Fq 'dotnet build --configuration Release --no-restore' AGENTS.md
+          grep -Fq 'dotnet test --configuration Release --no-build' AGENTS.md
+
+          for file in "${required[@]:1}"; do
+            head -n 1 "$file" | grep -Fxq -- '---'
+            grep -Eq '^name: [a-z0-9-]+$' "$file"
+            grep -Fq 'description:' "$file"
+            grep -Fq 'license: MIT' "$file"
+          done
+
+          forbidden='write-all|secrets\.[A-Za-z0-9_]+|NUGET_API_KEY'
+          matches="$(grep -R -I -n -E "$forbidden" AGENTS.md .agents || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Forbidden credential or permission pattern found in agent governance files:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Install template from checkout
+        run: dotnet new install .
+
+      - name: Generate validation library
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/generated-agent-template/Validation.AgentLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.AgentLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Validate generated agent baseline
+        shell: bash
+        run: |
+          required=(
+            "AGENTS.md"
+            ".agents/skills/dotnet-issue-implementation/SKILL.md"
+            ".agents/skills/dotnet-bug-investigation/SKILL.md"
+            ".agents/skills/dotnet-pr-review/SKILL.md"
+            ".agents/skills/dotnet-security-review/SKILL.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
+          )
+
+          for path in "${required[@]}"; do
+            if [ ! -s "$GENERATED_ROOT/$path" ]; then
+              echo "Generated template is missing agent governance file: $path"
+              exit 1
+            fi
+          done
+
+          grep -Fq '## Gerenciamento de contexto' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq '## Roteamento de tarefas e delegação' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'Validação determinística prevalece' "$GENERATED_ROOT/AGENTS.md"
+
+      - name: Uninstall checkout template
+        if: always()
+        run: dotnet new uninstall . || true
