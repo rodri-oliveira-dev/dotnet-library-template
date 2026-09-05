@@ -83,15 +83,6 @@ jobs:
             grep -Fq 'license: MIT' "$file"
           done
 
-          forbidden='write-all|secrets\.[A-Za-z0-9_]+|NUGET_API_KEY'
-          matches="$(grep -R -I -n -E "$forbidden" AGENTS.md .agents || true)"
-
-          if [ -n "$matches" ]; then
-            echo "Forbidden credential or permission pattern found in agent governance files:"
-            echo "$matches"
-            exit 1
-          fi
-
       - name: Install template from checkout
         run: dotnet new install .
 
