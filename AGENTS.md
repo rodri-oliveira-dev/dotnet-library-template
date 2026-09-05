@@ -21,6 +21,50 @@ Leia somente o que for relevante para a tarefa, priorizando:
 9. `.template.config/template.json`, quando existir;
 10. `.agents/skills/` para tarefas especializadas.
 
+## Gerenciamento de contexto
+
+Trate contexto como um recurso limitado. O objetivo é fornecer ao agente principal apenas a informação necessária para tomar a decisão correta.
+
+1. Pesquise símbolos, nomes de tipos, métodos, testes, mensagens de erro e configuração antes de abrir arquivos inteiros.
+2. Prefira leituras direcionadas ao trecho relevante. Para arquivos com mais de aproximadamente **350 linhas**, primeiro localize o símbolo ou seção necessária; leia o arquivo completo somente quando o comportamento global realmente importar.
+3. Antes de expandir a investigação, forme um conjunto de trabalho mínimo contendo, quando aplicável: implementação, contrato/interface, testes, configuração e documentação relacionada.
+4. Não carregue por padrão arquivos gerados, artefatos de build, relatórios de cobertura, binários, snapshots extensos ou lock files. `packages.lock.json` deve ser inspecionado somente quando a tarefa envolver restore/dependências ou quando um diff do lock file precisar ser validado.
+5. Evite reler arquivos sem mudança. Reutilize o que já foi confirmado durante a tarefa.
+6. Ao investigar padrões existentes, extraia o padrão relevante e os caminhos de referência em vez de copiar grandes blocos de arquivos para o contexto.
+7. Se a causa ainda não estiver clara depois da leitura direcionada, expanda o contexto de forma incremental e justificada.
+
+Leituras completas continuam apropriadas quando necessárias para entender contratos públicos, concorrência, fluxos de estado, segurança, configuração global ou comportamento distribuído pelo arquivo.
+
+## Roteamento de tarefas e delegação
+
+Quando o ambiente disponibilizar workers, subagentes ou modelos auxiliares, use-os para reduzir trabalho mecânico no agente principal sem delegar decisões de alto risco.
+
+### Pode ser delegado
+
+- localizar arquivos, símbolos, referências e testes relacionados;
+- inventariar uma área do repositório;
+- resumir arquivos grandes ou conjuntos de arquivos;
+- extrair padrões repetitivos e exemplos já existentes;
+- identificar comandos e workflows aplicáveis;
+- gerar boilerplate estritamente baseado em um padrão confirmado;
+- aplicar alterações mecânicas e repetitivas de baixo julgamento.
+
+O retorno de um worker deve ser conciso e estruturado: caminhos, símbolos, fatos relevantes, riscos percebidos e, quando necessário, pequenos trechos. Não devolva arquivos inteiros ao agente principal sem necessidade.
+
+### Deve permanecer com o agente principal
+
+- entendimento final da issue e definição da estratégia;
+- decisões de arquitetura e design;
+- mudanças de API pública e compatibilidade;
+- debugging que envolva concorrência, estado, consistência ou efeitos indiretos;
+- revisão de segurança;
+- decisão sobre dependências e breaking changes;
+- revisão final do diff e conclusão sobre o DoD.
+
+Código produzido por worker/subagente não é considerado validado apenas por ter sido gerado. O agente principal deve revisar o diff e submetê-lo às mesmas validações determinísticas da baseline.
+
+Se workers não estiverem disponíveis, preserve o mesmo princípio usando busca e leituras direcionadas antes de expandir o contexto.
+
 ## Estrutura e configuração
 
 - Código de produção fica em `/src`.
@@ -65,6 +109,8 @@ dotnet restore --locked-mode
 
 ## Validação obrigatória
 
+Validação determinística prevalece sobre a avaliação textual de qualquer agente. Não declare uma mudança como válida apenas porque a implementação parece correta.
+
 Antes de concluir uma alteração versionável, execute a partir da raiz, quando o ambiente permitir:
 
 ```bash
@@ -94,6 +140,8 @@ Quando o checkout estiver em um repositório Git com remote configurado e a tare
 dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
 ```
 
+Os workflows de CI, CodeQL, Dependency Review e demais quality gates existentes são enforcement da baseline. Não os contorne, não enfraqueça seus checks e não trate uma instrução de agente como substituta desses gates.
+
 Se uma validação não puder ser executada por limitação real do ambiente, relate o bloqueio; não altere a baseline apenas para contorná-lo.
 
 ## Testes
@@ -115,8 +163,12 @@ Antes de alterar um tipo, membro, namespace, assinatura, comportamento documenta
 
 ## Skills
 
-Use uma skill somente quando a descrição corresponder à tarefa:
+Use uma skill somente quando a descrição corresponder à tarefa. Skills de orquestração podem combinar skills técnicas mais específicas quando necessário.
 
+- `.agents/skills/dotnet-issue-implementation/SKILL.md`: transformar uma issue bem definida em implementação pequena, testes e validação do DoD;
+- `.agents/skills/dotnet-bug-investigation/SKILL.md`: investigar regressões e bugs a partir de evidências antes de alterar código;
+- `.agents/skills/dotnet-pr-review/SKILL.md`: revisar um diff/PR por corretude, regressões, compatibilidade, testes e risco;
+- `.agents/skills/dotnet-security-review/SKILL.md`: revisar código, dependências e automação sob ótica de segurança sem substituir scanners determinísticos;
 - `.agents/skills/dotnet-library-change/SKILL.md`: mudanças funcionais e técnicas na biblioteca;
 - `.agents/skills/dotnet-refactoring-engineer/SKILL.md`: refatoração preservando comportamento e contrato;
 - `.agents/skills/coverage-analysis/SKILL.md`: análise de cobertura e priorização de gaps por risco;
