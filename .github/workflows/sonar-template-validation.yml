@@ -66,7 +66,7 @@ jobs:
           test -s "$resolver"
 
           grep -Fq '"dotnet-sonarscanner"' "$manifest"
-          grep -Fq '"version": "11.2.1"' "$manifest"
+          grep -Fq '"version": "11.3.0"' "$manifest"
           grep -Fq 'pull_request:' "$workflow"
           grep -Fq 'push:' "$workflow"
           grep -Fq 'contents: read' "$workflow"
@@ -183,7 +183,7 @@ jobs:
           tools="$(dotnet tool list --local)"
           echo "$tools"
           grep -Fq 'dotnet-sonarscanner' <<< "$tools"
-          grep -Fq '11.2.1' <<< "$tools"
+          grep -Fq '11.3.0' <<< "$tools"
 
       - name: Instalar template do checkout
         run: dotnet new install .
@@ -215,7 +215,7 @@ jobs:
           test ! -e "$GENERATED_ROOT/.github/workflows/sonar-template-validation.yml"
 
           grep -Fq '"dotnet-sonarscanner"' "$manifest"
-          grep -Fq '"version": "11.2.1"' "$manifest"
+          grep -Fq '"version": "11.3.0"' "$manifest"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$workflow"
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore --no-incremental' "$workflow"
           grep -Fq 'SONAR_TOKEN' "$workflow"
