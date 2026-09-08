@@ -41,6 +41,7 @@
         ".github/workflows/template-package-validation.yml",
         ".github/workflows/initialize-repository.yml",
         ".github/workflows/template-validation.yml",
+        ".github/workflows/agent-governance-validation.yml",
         ".github/workflows/sonar-template-validation.yml",
         ".github/workflows/versioning-validation.yml",
         ".github/workflows/release-publishing-validation.yml",
