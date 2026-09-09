@@ -179,3 +179,37 @@ jobs:
           else
             echo "Nenhuma condição reprovada foi retornada pela API."
           fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "$status" != "OK" ]; then
+            issues_file="$RUNNER_TEMP/sonar-pr-issues.json"
+            if curl \
+              --fail-with-body \
+              --silent \
+              --show-error \
+              --user "${SONAR_TOKEN}:" \
+              --get \
+              "${SONAR_HOST_URL}/api/issues/search" \
+              --data-urlencode "componentKeys=${SONAR_PROJECT_KEY}" \
+              --data-urlencode "pullRequest=${{ github.event.pull_request.number }}" \
+              --data-urlencode "resolved=false" \
+              --data-urlencode "ps=100" \
+              -o "$issues_file"; then
+              security_issues="$(jq -r '
+                .issues[]?
+                | select(
+                    .type == "VULNERABILITY"
+                    or (((.impacts // []) | map(.softwareQuality)) | index("SECURITY") != null)
+                  )
+                | "- rule=\(.rule), component=\(.component), line=\(.line // "n/a"), severity=\(.severity // "n/a"), message=\(.message)"
+              ' "$issues_file")"
+
+              if [ -n "$security_issues" ]; then
+                echo "Issues de segurança abertas neste PR:"
+                printf '%s\n' "$security_issues"
+              else
+                echo "Nenhuma issue de segurança aberta foi retornada para este PR."
+              fi
+            else
+              echo "::warning::Não foi possível consultar as issues do PR pela API do SonarQube Cloud."
+            fi
+          fi
