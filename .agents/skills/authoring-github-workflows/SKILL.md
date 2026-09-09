@@ -68,17 +68,19 @@ Wrap the full value in double quotes when it embeds an expression and contains a
 
 ### Step 3: Validate with actionlint
 
-`actionlint` understands the GitHub Actions schema and expression grammar. Use the repository's pinned validation command when available. For manual validation, a known-good pinned release pattern is:
+`actionlint` understands the GitHub Actions schema and expression grammar. Use the repository's pinned validation command when available. For manual validation, the repository baseline is:
 
 ```bash
-ACTIONLINT_VERSION=1.7.7
-ACTIONLINT_SHA256=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+ACTIONLINT_VERSION=1.7.12
+ACTIONLINT_SHA256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
 curl -fsSLo actionlint.tar.gz \
   "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
 echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
 tar -xzf actionlint.tar.gz actionlint
 ./actionlint -shellcheck= -pyflakes= -color .github/workflows/*.yml
 ```
+
+Pin both version and checksum. Keep the pin current enough to understand GitHub Actions schema additions already used by the repository, such as newer `permissions` scopes.
 
 The truncated-expression bug surfaces as:
 
@@ -100,6 +102,7 @@ This template validates GitHub Actions structure through `.github/workflows/agen
 
 - [ ] Risky `${{ }}` scalars are quoted.
 - [ ] `actionlint -shellcheck= -pyflakes= .github/workflows/*.yml` exits `0`.
+- [ ] The pinned `actionlint` version recognizes every GitHub Actions feature currently used by the repository.
 - [ ] No workflow run reports that the workflow file could not be loaded.
 - [ ] Agent governance validation is green on the PR.
 
@@ -109,6 +112,7 @@ This template validates GitHub Actions structure through `.github/workflows/agen
 |---------|----------|
 | Unquoted `run-name`/`name` with `#` inside the expression | Wrap the whole value in double quotes |
 | Trusting YAML parsing alone | Run `actionlint` |
+| Using an old actionlint schema against newer GitHub permission scopes | Update the pinned version and checksum deliberately |
 | Escaping `${{` braces to fix parsing | Quote the scalar instead |
 | Adding shellcheck noise while validating workflow syntax | Run with `-shellcheck= -pyflakes=` |
 | Assuming a green YAML lint means the workflow will run | Validate with actionlint/GitHub Actions |
