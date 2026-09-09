@@ -46,6 +46,7 @@ jobs:
         run: |
           required=(
             "AGENTS.md"
+            ".agents/THIRD-PARTY-NOTICES.md"
             ".agents/skills/dotnet-issue-implementation/SKILL.md"
             ".agents/skills/dotnet-bug-investigation/SKILL.md"
             ".agents/skills/dotnet-pr-review/SKILL.md"
@@ -53,11 +54,31 @@ jobs:
             ".agents/skills/dotnet-library-change/SKILL.md"
             ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
             ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-gap-analysis/SKILL.md"
             ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/microbenchmarking/SKILL.md"
             ".agents/skills/ci-release-governance/SKILL.md"
+            ".agents/skills/authoring-github-workflows/SKILL.md"
+            ".agents/skills/nuget-trusted-publishing/SKILL.md"
+            ".agents/skills/directory-build-organization/SKILL.md"
+            ".agents/skills/binlog-failure-analysis/SKILL.md"
           )
 
-          for file in "${required[@]}"; do
+          references=(
+            ".agents/skills/nuget-trusted-publishing/references/package-types.md"
+            ".agents/skills/nuget-trusted-publishing/references/publish-workflow.md"
+            ".agents/skills/test-gap-analysis/references/mutation-catalog.md"
+            ".agents/skills/microbenchmarking/references/bdn-internals-and-tuning.md"
+            ".agents/skills/microbenchmarking/references/comparison-strategies.md"
+            ".agents/skills/microbenchmarking/references/diagnosers-and-exporters.md"
+            ".agents/skills/microbenchmarking/references/project-setup-and-running.md"
+            ".agents/skills/microbenchmarking/references/writing-benchmarks.md"
+            ".agents/skills/directory-build-organization/references/common-patterns.md"
+            ".agents/skills/directory-build-organization/references/multi-level-examples.md"
+            ".agents/skills/directory-build-organization/references/targetframework-props-pitfall.md"
+          )
+
+          for file in "${required[@]}" "${references[@]}"; do
             if [ ! -s "$file" ]; then
               echo "Required agent governance file is missing or empty: $file"
               exit 1
@@ -72,16 +93,36 @@ jobs:
           grep -Fq 'dotnet-bug-investigation' AGENTS.md
           grep -Fq 'dotnet-pr-review' AGENTS.md
           grep -Fq 'dotnet-security-review' AGENTS.md
+          grep -Fq 'coverage-analysis' AGENTS.md
+          grep -Fq 'test-gap-analysis' AGENTS.md
+          grep -Fq 'microbenchmarking' AGENTS.md
+          grep -Fq 'ci-release-governance' AGENTS.md
+          grep -Fq 'authoring-github-workflows' AGENTS.md
+          grep -Fq 'nuget-trusted-publishing' AGENTS.md
+          grep -Fq 'directory-build-organization' AGENTS.md
+          grep -Fq 'binlog-failure-analysis' AGENTS.md
           grep -Fq 'dotnet restore --locked-mode' AGENTS.md
           grep -Fq 'dotnet build --configuration Release --no-restore' AGENTS.md
           grep -Fq 'dotnet test --configuration Release --no-build' AGENTS.md
 
-          for file in "${required[@]:1}"; do
+          for file in "${required[@]:2}"; do
             head -n 1 "$file" | grep -Fxq -- '---'
             grep -Eq '^name: [a-z0-9-]+$' "$file"
             grep -Fq 'description:' "$file"
             grep -Fq 'license: MIT' "$file"
           done
+
+      - name: Validate GitHub Actions syntax with actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTIONLINT_VERSION='1.7.7'
+          ACTIONLINT_SHA256='023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757'
+          curl -fsSLo actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -shellcheck= -pyflakes= -color .github/workflows/*.yml
 
       - name: Install template from checkout
         run: dotnet new install .
@@ -99,6 +140,7 @@ jobs:
         run: |
           required=(
             "AGENTS.md"
+            ".agents/THIRD-PARTY-NOTICES.md"
             ".agents/skills/dotnet-issue-implementation/SKILL.md"
             ".agents/skills/dotnet-bug-investigation/SKILL.md"
             ".agents/skills/dotnet-pr-review/SKILL.md"
@@ -106,11 +148,31 @@ jobs:
             ".agents/skills/dotnet-library-change/SKILL.md"
             ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
             ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-gap-analysis/SKILL.md"
             ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/microbenchmarking/SKILL.md"
             ".agents/skills/ci-release-governance/SKILL.md"
+            ".agents/skills/authoring-github-workflows/SKILL.md"
+            ".agents/skills/nuget-trusted-publishing/SKILL.md"
+            ".agents/skills/directory-build-organization/SKILL.md"
+            ".agents/skills/binlog-failure-analysis/SKILL.md"
           )
 
-          for path in "${required[@]}"; do
+          references=(
+            ".agents/skills/nuget-trusted-publishing/references/package-types.md"
+            ".agents/skills/nuget-trusted-publishing/references/publish-workflow.md"
+            ".agents/skills/test-gap-analysis/references/mutation-catalog.md"
+            ".agents/skills/microbenchmarking/references/bdn-internals-and-tuning.md"
+            ".agents/skills/microbenchmarking/references/comparison-strategies.md"
+            ".agents/skills/microbenchmarking/references/diagnosers-and-exporters.md"
+            ".agents/skills/microbenchmarking/references/project-setup-and-running.md"
+            ".agents/skills/microbenchmarking/references/writing-benchmarks.md"
+            ".agents/skills/directory-build-organization/references/common-patterns.md"
+            ".agents/skills/directory-build-organization/references/multi-level-examples.md"
+            ".agents/skills/directory-build-organization/references/targetframework-props-pitfall.md"
+          )
+
+          for path in "${required[@]}" "${references[@]}"; do
             if [ ! -s "$GENERATED_ROOT/$path" ]; then
               echo "Generated template is missing agent governance file: $path"
               exit 1
@@ -120,6 +182,12 @@ jobs:
           grep -Fq '## Gerenciamento de contexto' "$GENERATED_ROOT/AGENTS.md"
           grep -Fq '## Roteamento de tarefas e delegação' "$GENERATED_ROOT/AGENTS.md"
           grep -Fq 'Validação determinística prevalece' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'authoring-github-workflows' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'nuget-trusted-publishing' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'test-gap-analysis' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'microbenchmarking' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'directory-build-organization' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'binlog-failure-analysis' "$GENERATED_ROOT/AGENTS.md"
 
       - name: Uninstall checkout template
         if: always()
