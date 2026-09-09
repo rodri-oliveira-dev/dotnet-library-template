@@ -114,7 +114,7 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN"
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover*.xml"
           /d:sonar.exclusions="resources/nuget-icon.png"
-          /d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js"
+          /d:sonar.coverage.exclusions=".github/scripts/sync-sonar-quality-issues.js,.validation/**"
           /d:sonar.qualitygate.wait=true
           /d:sonar.qualitygate.timeout=300
 

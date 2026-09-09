@@ -157,6 +157,7 @@ Use somente skills relacionadas à tarefa. Skills de orquestração podem combin
 | `binlog-failure-analysis` | Diagnóstico de falhas MSBuild por `.binlog` |
 
 Skills importadas/adaptadas de terceiros permanecem subordinadas a este `AGENTS.md` e ao estado real do repositório.
+Mantenha a proveniência, distribuição e política de atualização das skills em `.agents/SOURCES.md`.
 
 Em caso de conflito, `AGENTS.md` e o estado real do repositório prevalecem.
 

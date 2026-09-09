@@ -80,6 +80,9 @@ validate_github_context() {
       *github.com[:/]rodri-oliveira-dev/dotnet-library-template|*github.com[:/]rodri-oliveira-dev/dotnet-library-template.git)
         fail "Initialize repository must not run against the source template repository '$source_repository'."
         ;;
+      *)
+        # Non-template remotes are expected for generated repositories.
+        ;;
     esac
   fi
 

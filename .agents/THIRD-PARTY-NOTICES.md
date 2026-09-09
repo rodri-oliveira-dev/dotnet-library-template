@@ -1,18 +1,29 @@
 # Third-Party Notices for Agent Skills
 
-Portions of the agent skills under `.agents/skills/` are adapted from the .NET team's `dotnet/skills` repository:
+Portions of the agent skills under `.agents/skills/` are adapted from the .NET
+team's `dotnet/skills` repository:
 
 - Source: https://github.com/dotnet/skills
-- Source revision used for this import: `c4a3f7ad4fd8fb50c02a42a6375c0aba4f92e9f7`
-- Imported/adapted skills in this change:
-  - `authoring-github-workflows`
-  - `nuget-trusted-publishing`
-  - `test-gap-analysis`
-  - `microbenchmarking`
-  - `directory-build-organization`
-  - `binlog-failure-analysis`
+- License: MIT License
 
-The imported material is licensed under the MIT License:
+The following skills were imported or adapted from `dotnet/skills` at source
+revision `c4a3f7ad4fd8fb50c02a42a6375c0aba4f92e9f7`:
+
+- `authoring-github-workflows`
+- `nuget-trusted-publishing`
+- `test-gap-analysis`
+- `microbenchmarking`
+- `directory-build-organization`
+- `binlog-failure-analysis`
+
+The following pre-existing local adaptations are also .NET Foundation-derived.
+Their upstream paths are recorded in `.agents/SOURCES.md`; the exact upstream
+revision used by the original local adaptation is not established:
+
+- `coverage-analysis`
+- `test-anti-patterns`
+
+The imported or adapted upstream material is licensed under the MIT License:
 
 > The MIT License (MIT)
 >
@@ -36,4 +47,7 @@ The imported material is licensed under the MIT License:
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
 
-The local copies are adapted to this template's `AGENTS.md`, Central Package Management, GitHub Actions pinning, and deterministic validation policies.
+Local copies are adapted to this template's `AGENTS.md`, Central Package
+Management, GitHub Actions pinning, deterministic validation, release governance
+and generated-template policies. Internal or purely local skills are documented
+in `.agents/SOURCES.md` and are not attributed here as third-party material.
