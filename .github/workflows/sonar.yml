@@ -135,3 +135,47 @@ jobs:
         if: ${{ env.SONAR_TOKEN != '' }}
         shell: bash
         run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Exibir condições do Quality Gate
+        if: ${{ always() && env.SONAR_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -u
+
+          response_file="$RUNNER_TEMP/sonar-quality-gate.json"
+          curl_args=(
+            --fail-with-body
+            --silent
+            --show-error
+            --user "${SONAR_TOKEN}:"
+            --get
+            "${SONAR_HOST_URL}/api/qualitygates/project_status"
+            --data-urlencode "projectKey=${SONAR_PROJECT_KEY}"
+          )
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            curl_args+=(--data-urlencode "pullRequest=${{ github.event.pull_request.number }}")
+          else
+            curl_args+=(--data-urlencode "branch=${GITHUB_REF_NAME}")
+          fi
+
+          if ! curl "${curl_args[@]}" -o "$response_file"; then
+            echo "::warning::Não foi possível consultar os detalhes do Quality Gate pela API do SonarQube Cloud."
+            exit 0
+          fi
+
+          status="$(jq -r '.projectStatus.status // "UNKNOWN"' "$response_file")"
+          echo "Quality Gate: $status"
+
+          failed_conditions="$(jq -r '
+            .projectStatus.conditions[]?
+            | select(.status != "OK")
+            | "- \(.metricKey): status=\(.status), actual=\(.actualValue // "n/a"), threshold=\(.errorThreshold // "n/a"), comparator=\(.comparator // "n/a")"
+          ' "$response_file")"
+
+          if [ -n "$failed_conditions" ]; then
+            echo "Condições não aprovadas:"
+            printf '%s\n' "$failed_conditions"
+          else
+            echo "Nenhuma condição reprovada foi retornada pela API."
+          fi
