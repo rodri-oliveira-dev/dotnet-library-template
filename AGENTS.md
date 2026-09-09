@@ -34,6 +34,14 @@ Mantenha no agente principal decisões de comportamento, arquitetura, API públi
 
 Código produzido por outro agente deve passar pela mesma revisão e validação determinística da baseline. Se workers não estiverem disponíveis, preserve o princípio usando busca e leituras direcionadas.
 
+Combine skills somente quando cada uma tiver responsabilidade clara. Exemplos:
+
+- desenho semântico de CI/release: `ci-release-governance`; correção estrutural do YAML: `authoring-github-workflows`;
+- análise de percentual/gaps de cobertura: `coverage-analysis`; sobrevivência comportamental a mudanças: `test-gap-analysis`; qualidade geral de testes: `test-anti-patterns`;
+- governança de publicação: `ci-release-governance`; autenticação OIDC do nuget.org: `nuget-trusted-publishing`;
+- organização de props/targets/CPM: `directory-build-organization`; falha MSBuild obscura com binlog: `binlog-failure-analysis`;
+- mudanças sensíveis a desempenho: `microbenchmarking` somente quando medição controlada agrega evidência.
+
 ## Estrutura e configuração
 
 - Código de produção fica em `/src` e testes em `/tests`.
@@ -56,6 +64,7 @@ Código produzido por outro agente deve passar pela mesma revisão e validação
 - Não adicione dependências de domínio, infraestrutura, framework web ou tooling sem necessidade concreta e reutilizável.
 - Não reduza warnings, auditoria, testes, cobertura ou controles de segurança para fazer a mudança passar.
 - Não introduza secrets, tokens, URLs privadas ou credenciais em código, workflows ou documentação.
+- Preserve actions pinadas e permissões mínimas em GitHub Actions; exemplos genéricos em skills não substituem a política real do repositório.
 
 ## Dependências
 
@@ -101,6 +110,8 @@ Quando Source Link precisar ser comprovado em checkout Git com remote configurad
 dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
 ```
 
+Ao alterar `.github/workflows/`, execute também `actionlint` conforme `authoring-github-workflows` e confirme o gate `Agent governance validation`.
+
 CI, CodeQL, Dependency Review, NuGet Audit, SonarQube Cloud e demais gates existentes são enforcement da baseline. Não os contorne nem trate instruções de agente como substitutas desses controles.
 
 Se uma validação não puder ser executada por limitação real do ambiente, relate o bloqueio; não altere a baseline para contorná-lo.
@@ -112,6 +123,7 @@ Se uma validação não puder ser executada por limitação real do ambiente, re
 - Não aceite asserts tautológicos ou testes que apenas executam linhas para aumentar cobertura.
 - Prefira testes determinísticos, independentes de ordem e sem sleeps arbitrários.
 - Use mocks/substitutes apenas quando isolarem dependência real e melhorarem a clareza do cenário.
+- Para gaps comportamentais, diferencie cobertura de linha de proteção real contra mutações observáveis; use `test-gap-analysis` quando necessário.
 
 ## API pública e changelog
 
@@ -135,8 +147,16 @@ Use somente skills relacionadas à tarefa. Skills de orquestração podem combin
 | `dotnet-library-change` | Mudança funcional/técnica |
 | `dotnet-refactoring-engineer` | Refatoração sem mudança de comportamento |
 | `coverage-analysis` | Análise de cobertura |
-| `test-anti-patterns` | Qualidade de testes |
+| `test-gap-analysis` | Gaps comportamentais e pseudo-mutation analysis |
+| `test-anti-patterns` | Qualidade e anti-patterns de testes |
+| `microbenchmarking` | BenchmarkDotNet e comparação controlada de desempenho |
 | `ci-release-governance` | CI, packaging e release |
+| `authoring-github-workflows` | Sintaxe/estrutura segura de GitHub Actions e `actionlint` |
+| `nuget-trusted-publishing` | Publicação NuGet via OIDC/trusted publishing |
+| `directory-build-organization` | Organização de `Directory.Build.*`, CPM e avaliação MSBuild |
+| `binlog-failure-analysis` | Diagnóstico de falhas MSBuild por `.binlog` |
+
+Skills importadas/adaptadas de terceiros permanecem subordinadas a este `AGENTS.md` e ao estado real do repositório.
 
 Em caso de conflito, `AGENTS.md` e o estado real do repositório prevalecem.
 
