@@ -114,6 +114,7 @@ jobs:
           grep -Fq 'sonar-issue-key:' "$sync_script"
           grep -Fq 'github-actions[bot]' "$sync_script"
           node --check "$sync_script"
+          node --test .validation/sync-sonar-quality-issues.test.js
 
           if grep -Fq '/d:sonar.exclusions="scripts/**"' "$workflow"; then
             echo "scripts/** não deve ser removido da análise Sonar."
