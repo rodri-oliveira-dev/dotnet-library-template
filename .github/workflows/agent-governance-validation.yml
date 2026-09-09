@@ -7,6 +7,7 @@ on:
     paths:
       - 'AGENTS.md'
       - '.agents/**'
+      - '.validation/validate-agent-sources.py'
       - '.template.config/template.json'
       - '.github/workflows/agent-governance-validation.yml'
   push:
@@ -15,6 +16,7 @@ on:
     paths:
       - 'AGENTS.md'
       - '.agents/**'
+      - '.validation/validate-agent-sources.py'
       - '.template.config/template.json'
       - '.github/workflows/agent-governance-validation.yml'
 
@@ -46,7 +48,9 @@ jobs:
         run: |
           required=(
             "AGENTS.md"
+            ".agents/SOURCES.md"
             ".agents/THIRD-PARTY-NOTICES.md"
+            ".validation/validate-agent-sources.py"
             ".agents/skills/dotnet-issue-implementation/SKILL.md"
             ".agents/skills/dotnet-bug-investigation/SKILL.md"
             ".agents/skills/dotnet-pr-review/SKILL.md"
@@ -104,8 +108,11 @@ jobs:
           grep -Fq 'dotnet restore --locked-mode' AGENTS.md
           grep -Fq 'dotnet build --configuration Release --no-restore' AGENTS.md
           grep -Fq 'dotnet test --configuration Release --no-build' AGENTS.md
+          grep -Fq '.agents/SOURCES.md' AGENTS.md
 
-          for file in "${required[@]:2}"; do
+          python .validation/validate-agent-sources.py .
+
+          for file in "${required[@]:4}"; do
             head -n 1 "$file" | grep -Fxq -- '---'
             grep -Eq '^name: [a-z0-9-]+$' "$file"
             grep -Fq 'description:' "$file"
@@ -147,6 +154,7 @@ jobs:
         run: |
           required=(
             "AGENTS.md"
+            ".agents/SOURCES.md"
             ".agents/THIRD-PARTY-NOTICES.md"
             ".agents/skills/dotnet-issue-implementation/SKILL.md"
             ".agents/skills/dotnet-bug-investigation/SKILL.md"
@@ -195,6 +203,9 @@ jobs:
           grep -Fq 'microbenchmarking' "$GENERATED_ROOT/AGENTS.md"
           grep -Fq 'directory-build-organization' "$GENERATED_ROOT/AGENTS.md"
           grep -Fq 'binlog-failure-analysis' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq '.agents/SOURCES.md' "$GENERATED_ROOT/AGENTS.md"
+
+          python .validation/validate-agent-sources.py "$GENERATED_ROOT"
 
       - name: Uninstall checkout template
         if: always()
