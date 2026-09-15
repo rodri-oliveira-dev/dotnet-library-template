@@ -20,11 +20,15 @@ A generated repository should run its normal CI, CodeQL, Dependency Review, pack
 
 ## Template drift protection
 
-The source template validates that:
+The existing template validation workflow is the canonical drift gate for this policy. It verifies that:
 
-- `.github/dependabot.yml` contains NuGet, `dotnet-sdk`, and GitHub Actions ecosystems;
+- `.github/dependabot.yml` contains exactly the NuGet, `dotnet-sdk`, and GitHub Actions ecosystems;
+- each ecosystem monitors the repository root on a weekly schedule in `America/Sao_Paulo`;
+- NuGet and GitHub Actions group minor/patch updates while SDK updates remain dedicated pull requests;
 - a project generated with `dotnet new rodri-lib` receives the same three-ecosystem baseline;
 - generated `global.json` remains identical to the source template's toolchain policy;
-- maintenance-only validation workflows do not leak into generated repositories.
+- this dependency-maintenance policy is included in generated repositories.
+
+Keeping these assertions in the existing end-to-end template validation avoids a second overlapping workflow and ensures dependency-policy changes are validated together with the rest of the generated repository contract.
 
 Repository administrators remain responsible for GitHub-side features such as Dependabot alerts, secret scanning, push protection, rulesets, and publishing trust configuration.
