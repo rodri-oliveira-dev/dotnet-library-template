@@ -113,6 +113,7 @@ jobs:
       - name: Verificar configuração do Dependabot no checkout
         shell: bash
         run: |
+          set -euo pipefail
           file=".github/dependabot.yml"
 
           if [ ! -s "$file" ]; then
@@ -121,32 +122,64 @@ jobs:
           fi
 
           grep -Eq '^version: 2$' "$file"
-          grep -Fq 'package-ecosystem: "nuget"' "$file"
-          grep -Fq 'package-ecosystem: "github-actions"' "$file"
 
-          if [ "$(grep -Fc 'directory: "/"' "$file")" -ne 2 ]; then
-            echo "NuGet e GitHub Actions devem monitorar a raiz do repositório."
+          if [ "$(grep -Fc 'package-ecosystem:' "$file")" -ne 3 ]; then
+            echo "A baseline deve declarar exatamente NuGet, .NET SDK e GitHub Actions."
             exit 1
           fi
 
-          if [ "$(grep -Fc 'interval: "weekly"' "$file")" -ne 2 ]; then
-            echo "Ambos os ecossistemas devem usar frequência semanal."
+          ecosystem_block() {
+            local ecosystem="$1"
+            awk -v ecosystem="$ecosystem" '
+              $0 == "  - package-ecosystem: \"" ecosystem "\"" {
+                found = 1
+                print
+                next
+              }
+              found && /^  - package-ecosystem:/ { exit }
+              found { print }
+            ' "$file"
+          }
+
+          validate_ecosystem() {
+            local ecosystem="$1"
+            local expected_limit="$2"
+            local block
+            block="$(ecosystem_block "$ecosystem")"
+
+            if [ -z "$block" ]; then
+              echo "Ecossistema Dependabot ausente: $ecosystem"
+              exit 1
+            fi
+
+            grep -Fq 'directory: "/"' <<< "$block"
+            grep -Fq 'interval: "weekly"' <<< "$block"
+            grep -Fq 'timezone: "America/Sao_Paulo"' <<< "$block"
+            grep -Fq "open-pull-requests-limit: $expected_limit" <<< "$block"
+          }
+
+          validate_grouped_minor_patch() {
+            local ecosystem="$1"
+            local block
+            block="$(ecosystem_block "$ecosystem")"
+
+            grep -Fq 'groups:' <<< "$block"
+            grep -Fq 'update-types:' <<< "$block"
+            grep -Fq -- '- "minor"' <<< "$block"
+            grep -Fq -- '- "patch"' <<< "$block"
+          }
+
+          validate_ecosystem "nuget" 5
+          validate_ecosystem "dotnet-sdk" 2
+          validate_ecosystem "github-actions" 5
+          validate_grouped_minor_patch "nuget"
+          validate_grouped_minor_patch "github-actions"
+
+          sdk_block="$(ecosystem_block "dotnet-sdk")"
+          if grep -Fq 'groups:' <<< "$sdk_block"; then
+            echo "Atualizações do .NET SDK devem permanecer em PRs dedicados."
             exit 1
           fi
-
-          if [ "$(grep -Fc 'timezone: "America/Sao_Paulo"' "$file")" -ne 2 ]; then
-            echo "Ambos os ecossistemas devem declarar timezone explícito."
-            exit 1
-          fi
-
-          if [ "$(grep -Fc 'open-pull-requests-limit: 5' "$file")" -ne 2 ]; then
-            echo "Ambos os ecossistemas devem limitar PRs simultâneos."
-            exit 1
-          fi
-
-          grep -Fq 'update-types:' "$file"
-          grep -Fq -- '- "minor"' "$file"
-          grep -Fq -- '- "patch"' "$file"
 
           if grep -Eq 'registries:|secrets\.|token:|password:' "$file"; then
             echo "A baseline do Dependabot não deve conter registry privado ou credencial."
@@ -309,6 +342,7 @@ jobs:
             "AGENTS.md"
             ".editorconfig"
             "global.json"
+            "docs/dependency-maintenance.md"
             ".agents/skills/dotnet-library-change/SKILL.md"
             ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
             ".agents/skills/coverage-analysis/SKILL.md"
@@ -369,7 +403,9 @@ jobs:
           grep -Fq 'name: Feature request' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/feature_request.yml"
           grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
           grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "dotnet-sdk"' "$GENERATED_ROOT/.github/dependabot.yml"
           grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq '.NET SDK selected by `global.json`' "$GENERATED_ROOT/docs/dependency-maintenance.md"
           if ! cmp -s global.json "$GENERATED_ROOT/global.json"; then
             echo "global.json gerado diverge da configuração da raiz:"
             diff -u global.json "$GENERATED_ROOT/global.json" || true
