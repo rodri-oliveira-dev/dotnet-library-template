@@ -150,6 +150,8 @@ validate_generated_output() {
     '.github/workflows/release-publishing-validation.yml'
     '.github/workflows/github-template-initialization-validation.yml'
     'docs/template-development.md'
+    'docs/advanced-reference.md'
+    'docs/advanced-reference.pt-BR.md'
     'docs/repository-administration.md'
     'docs/library-readme.md'
     'README.en.md'

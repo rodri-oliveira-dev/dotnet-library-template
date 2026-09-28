@@ -382,6 +382,8 @@ jobs:
             ".github/workflows/template-package-validation.yml"
             "packaging/RodriOliveira.DotNet.Library.Template.csproj"
             "docs/template-development.md"
+            "docs/advanced-reference.md"
+            "docs/advanced-reference.pt-BR.md"
             "docs/repository-administration.md"
             "docs/library-readme.md"
             "README.en.md"
