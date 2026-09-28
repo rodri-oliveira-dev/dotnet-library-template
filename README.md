@@ -57,7 +57,9 @@ A saída gerada inclui, entre outras garantias:
 - **Empacotamento:** `.nupkg` + `.snupkg`, documentação XML, README no pacote, PDB portátil, Source Link e Package Validation nativo do SDK.
 - **CI e segurança:** CodeQL, Dependency Review, Dependabot, permissões mínimas nos workflows, actions pinadas por SHA e checkout sem persistência de credenciais.
 - **Versionamento e release:** Semantic Versioning, versão base centralizada, release manual validada antes de publicar, release candidate com manifesto/checksums e NuGet.org Trusted Publishing via GitHub OIDC.
-- **Governança:** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` e automações de validação do próprio template.
+- **Governança:** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` e `CHANGELOG.md`.
+
+As automações exclusivas de validação do template permanecem no repositório-fonte e não fazem parte da saída gerada.
 
 Detalhes de release, supply chain, OIDC, package validation e validações E2E ficam na [referência avançada](docs/advanced-reference.pt-BR.md).
 
