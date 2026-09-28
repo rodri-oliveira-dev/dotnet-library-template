@@ -83,7 +83,7 @@ Para remover:
 dotnet new uninstall RodriOliveira.DotNet.Library.Template
 ```
 
-Releases oficiais também espelham o template no GitHub Packages; configuração de fonte autenticada e detalhes de publicação estão na [referência avançada](docs/advanced-reference.pt-BR.md).
+Releases oficiais também espelham o template no GitHub Packages; configuração de fonte autenticada e detalhes de publicação estão na [seção GitHub Packages da referência avançada](docs/advanced-reference.pt-BR.md#github-packages).
 
 ## GitHub Template Repository
 
