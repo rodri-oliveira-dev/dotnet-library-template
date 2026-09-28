@@ -256,6 +256,21 @@ https://nuget.pkg.github.com/rodri-oliveira-dev/index.json
 
 Essa publicação é um mirror autenticado para consumidores que já usam GitHub Packages. NuGet.org permanece o registry público principal e é o caminho recomendado para `dotnet new install`.
 
+Para consumir o mirror do GitHub Packages, configure uma fonte NuGet autenticada com seu usuário do GitHub e um token que tenha `read:packages`:
+
+```bash
+dotnet nuget add source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.json" \
+  --name github-rodri-oliveira-dev \
+  --username GITHUB_USERNAME \
+  --password GITHUB_PACKAGES_TOKEN \
+  --store-password-in-clear-text
+
+dotnet new install RodriOliveira.DotNet.Library.Template \
+  --add-source "https://nuget.pkg.github.com/rodri-oliveira-dev/index.json"
+```
+
+`GITHUB_USERNAME` e `GITHUB_PACKAGES_TOKEN` são placeholders. Use um token limitado ao acesso mínimo necessário e nunca o versione no repositório. O argumento `--add-source` permite que `dotnet new install` resolva o template pelo mirror autenticado depois que a fonte estiver registrada.
+
 ### Proteção do placeholder
 
 O repositório-template usa `Template.Library` como identidade neutra. O workflow de release detecta essa identidade e impede sua publicação acidental no NuGet.org.
