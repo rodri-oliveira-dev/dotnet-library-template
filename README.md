@@ -99,7 +99,7 @@ Use this template
 
 O GitHub não executa `.template.config/template.json` durante **Use this template**. O workflow `Initialize repository` executa depois o `dotnet new rodri-lib`, valida a saída e abre um pull request de inicialização, preservando rulesets/branch protection.
 
-O token temporário precisa de **Contents: Read and write**, **Pull requests: Read and write** e **Workflows: Read and write** no repositório de destino. Criação do token, troubleshooting e checklist pós-inicialização estão em [GitHub Template Repository — referência avançada](docs/advanced-reference.pt-BR.md#alternativa--github-template-repository).
+O token temporário precisa de **Contents: Read and write**, **Pull requests: Read and write** e **Workflows: Read and write** no repositório de destino. Criação do token, troubleshooting e checklist pós-inicialização estão em [GitHub Template Repository — referência avançada](docs/advanced-reference.pt-BR.md).
 
 ## Clone + instalação local
 
