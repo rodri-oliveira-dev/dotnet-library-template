@@ -34,6 +34,8 @@
         "README.en.md",
         ".github/workflows/release.yml",
         "docs/template-development.md",
+        "docs/advanced-reference.md",
+        "docs/advanced-reference.pt-BR.md",
         "docs/repository-administration.md",
         "docs/project-identity.md",
         "docs/project-identity.pt-BR.md",

@@ -103,6 +103,8 @@ The following content exists only to maintain the source template and is exclude
 - `.github/workflows/release-publishing-validation.yml`;
 - `.github/workflows/github-template-initialization-validation.yml`;
 - `docs/template-development.md`;
+- `docs/advanced-reference.md`;
+- `docs/advanced-reference.pt-BR.md`;
 - `docs/repository-administration.md`;
 - `scripts/initialize-repository.sh`;
 - `scripts/verify-template-package.cs`;
