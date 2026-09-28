@@ -57,7 +57,9 @@ Generated output includes, among other guarantees:
 - **Packaging:** `.nupkg` + `.snupkg`, XML documentation, package README, portable PDB, Source Link, and native SDK Package Validation.
 - **CI and security:** CodeQL, Dependency Review, Dependabot, least-privilege workflow permissions, SHA-pinned actions, and checkout without persisted credentials.
 - **Versioning and release:** Semantic Versioning, centralized base version, manual release validation before publication, release candidate manifest/checksums, and NuGet.org Trusted Publishing through GitHub OIDC.
-- **Governance:** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, and template-specific validation automation.
+- **Governance:** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `CHANGELOG.md`.
+
+Template-specific validation automation remains in the source repository and is not part of generated output.
 
 Release, supply-chain, OIDC, package-validation, and E2E details live in the [advanced reference](docs/advanced-reference.md).
 
