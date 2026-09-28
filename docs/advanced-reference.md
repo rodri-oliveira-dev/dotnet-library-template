@@ -149,7 +149,7 @@ Before the first release of a library created from the GitHub Template:
 
 > Administrative settings are not copied by a GitHub Template Repository. This includes secrets, variables, environments, rulesets, branch protection, Trusted Publishing policies, and other repository settings.
 
-The recommended administrative baseline is documented in [docs/repository-administration.md](docs/repository-administration.md).
+The recommended administrative baseline is documented in [docs/repository-administration.md](repository-administration.md).
 
 ## Validate the source template repository
 
@@ -322,7 +322,7 @@ Coverage is generated in OpenCover format and imported through `sonar.cs.opencov
 
 **Fork pull requests:** GitHub does not expose Repository Secrets such as `SONAR_TOKEN` to `pull_request` workflows from forks. In that case the workflow emits a warning and completes the disabled path without running the scanner or Quality Gate. Therefore a green Sonar check on a fork PR does not prove that Sonar evaluated the contribution and must not be the only required quality gate for untrusted fork contributions.
 
-The complete setup, including coverage, SemVer versioning, branch protection, fork behavior, and troubleshooting, is documented in [docs/sonarqube-cloud.md](docs/sonarqube-cloud.md). The Portuguese version is available at [docs/sonarqube-cloud.pt-BR.md](docs/sonarqube-cloud.pt-BR.md).
+The complete setup, including coverage, SemVer versioning, branch protection, fork behavior, and troubleshooting, is documented in [docs/sonarqube-cloud.md](sonarqube-cloud.md). The Portuguese version is available at [docs/sonarqube-cloud.pt-BR.md](sonarqube-cloud.pt-BR.md).
 
 ## Generated content versus template maintenance
 
