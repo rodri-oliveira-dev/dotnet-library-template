@@ -83,7 +83,7 @@ To remove it:
 dotnet new uninstall RodriOliveira.DotNet.Library.Template
 ```
 
-Official releases also mirror the template to GitHub Packages; authenticated source configuration and publication details are in the [advanced reference](docs/advanced-reference.md).
+Official releases also mirror the template to GitHub Packages; authenticated source configuration and publication details are in the [GitHub Packages section of the advanced reference](docs/advanced-reference.md#github-packages).
 
 ## GitHub Template Repository
 
