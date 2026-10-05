@@ -15,7 +15,7 @@ concurrency:
 jobs:
   disabled-contract:
     name: Validar Sonar sem token
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     env:
       SONAR_TOKEN: ''
@@ -31,7 +31,7 @@ jobs:
 
   generated-contract:
     name: Validar Sonar no projeto gerado
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
