@@ -57,7 +57,7 @@ env:
 jobs:
   build:
     name: Build release candidate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -305,7 +305,7 @@ jobs:
     name: Publish official release
     if: "${{ github.event_name == 'workflow_dispatch' && inputs.publish }}"
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
     permissions:
