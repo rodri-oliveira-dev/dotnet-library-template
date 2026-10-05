@@ -18,7 +18,7 @@ concurrency:
 jobs:
   initialization-parity:
     name: Validate GitHub Template initialization parity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
