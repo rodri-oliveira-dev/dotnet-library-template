@@ -30,7 +30,7 @@ concurrency:
 jobs:
   validate-agent-baseline:
     name: Validate agent baseline and generated template
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
 
     steps:
       - name: Checkout

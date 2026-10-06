@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build-test-pack:
     name: Restore, build, test, coverage e pack
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_OS || 'ubuntu-26.04' }}
 
     steps:
       - name: Checkout
