@@ -1,6 +1,7 @@
 {
   "recommendations": [
     "ms-dotnettools.csdevkit",
-    "redhat.vscode-yaml"
+    "redhat.vscode-yaml",
+    "rodrioliveira.adr-guard"
   ]
 }

@@ -330,6 +330,7 @@ jobs:
         run: |
           required=(
             "Validation.SampleLibrary.slnx"
+            "Validation.SampleLibrary.code-workspace"
             "src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
             "src/Validation.SampleLibrary/packages.lock.json"
             "tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj"
@@ -342,6 +343,12 @@ jobs:
             "AGENTS.md"
             ".editorconfig"
             "global.json"
+            ".config/dotnet-tools.json"
+            ".adrguard.yml"
+            "docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md"
+            ".vscode/extensions.json"
+            ".vscode/settings.json"
+            ".vscode/tasks.json"
             "docs/dependency-maintenance.md"
             ".agents/skills/dotnet-library-change/SKILL.md"
             ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
@@ -417,6 +424,17 @@ jobs:
           grep -Fq 'dotnet_diagnostic.CA1062.severity = warning' "$GENERATED_ROOT/.editorconfig"
           grep -Fq 'dotnet_diagnostic.CA1859.severity = suggestion' "$GENERATED_ROOT/.editorconfig"
           grep -Fq 'privately report suspected vulnerabilities' "$GENERATED_ROOT/SECURITY.md"
+          grep -Fq 'Validation.SampleLibrary.slnx' "$GENERATED_ROOT/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'rodrioliveira.adrguard' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq '"version": "1.9.0"' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq '"rollForward": false' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq 'adr-directory: "docs/adr"' "$GENERATED_ROOT/.adrguard.yml"
+          grep -Fq 'rodrioliveira.adr-guard' "$GENERATED_ROOT/.vscode/extensions.json"
+          grep -Fq 'ADR Guard: Check' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'ADR Guard: Index' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          test ! -e "$GENERATED_ROOT/Template.Library.code-workspace"
           grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
@@ -512,6 +530,13 @@ jobs:
       - name: Restaurar ferramentas locais da saída
         working-directory: ${{ env.GENERATED_ROOT }}
         run: dotnet tool restore
+
+      - name: Validar ADR Guard na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: |
+          dotnet tool list --local
+          dotnet tool run adr-guard -- --version
+          dotnet tool run adr-guard -- check docs/adr
 
       - name: Restaurar dependências da saída em locked mode
         working-directory: ${{ env.GENERATED_ROOT }}

@@ -62,6 +62,34 @@
         "artifacts/packages"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "ADR Guard: Check",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["tool", "run", "adr-guard", "--", "check", "docs/adr"],
+      "problemMatcher": []
+    },
+    {
+      "label": "ADR Guard: Index",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["tool", "run", "adr-guard", "--", "index", "docs/adr"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Workspace: Validate All",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        ".NET: Restore Tools",
+        ".NET: Restore Dependencies",
+        "ADR Guard: Check",
+        ".NET: Build Release",
+        ".NET: Test Release",
+        ".NET: Coverage",
+        ".NET: Pack Release"
+      ],
+      "problemMatcher": []
     }
   ]
 }

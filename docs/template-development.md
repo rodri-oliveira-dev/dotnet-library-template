@@ -181,6 +181,9 @@ From a clean checkout:
 ```bash
 dotnet --version
 dotnet tool restore
+dotnet tool list --local
+dotnet tool run adr-guard -- --version
+dotnet tool run adr-guard -- check docs/adr
 dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
 dotnet build --configuration Release --no-restore
@@ -205,6 +208,41 @@ dotnet run --file scripts/verify-template-package.cs -- artifacts/templates \
 `.github/workflows/codeql.yml` is intentionally separate from CI. It initializes CodeQL for C# with `build-mode: manual`, restores dependencies in locked mode, builds the Release solution, and uploads analysis results with only `contents: read` and `security-events: write` permissions.
 
 `.github/workflows/dependency-review.yml` reviews only dependency deltas introduced by pull requests and blocks new High/Critical known vulnerabilities.
+
+## ADR Guard baseline
+
+ADR Guard is generated-project content. Keep these files included by `.template.config/template.json`:
+
+- `.config/dotnet-tools.json`, with an explicit stable `RodriOliveira.AdrGuard` version and `rollForward: false`;
+- `.adrguard.yml`, using the canonical `docs/adr` directory and extended authoring template;
+- `docs/adr/`, including the template-governance decision rather than a product-specific library decision;
+- `.vscode/` recommendations, settings, and tasks;
+- `Template.Library.code-workspace`.
+
+`sourceName: Template.Library` is the single naming mechanism for both the solution and workspace. Direct generation must produce `Validation.SampleLibrary.code-workspace`, and the GitHub Template initializer must converge to that same output without a separate rename implementation.
+
+The CLI and VS Code extension are independent distributions. Do not commit `adrGuard.cli.path`: the extension requires a trusted absolute path in the local or remote extension host when it cannot discover `adr-guard` on `PATH`, and that value is not portable. Workspace settings may use the documented resource-scoped directory, canonical format, base reference, and disabled on-save validation. Do not enable AI drafting/review or add provider credentials to this baseline.
+
+The existing `ci.yml` is the enforcement point. It restores the local manifest and runs the read-only command:
+
+```bash
+dotnet tool run adr-guard -- check docs/adr
+```
+
+Index generation is intentionally excluded from CI and `Workspace: Validate All`; `adr-guard index docs/adr` writes `docs/adr/README.md` and must remain an explicit developer task.
+
+### Update the ADR Guard CLI
+
+Confirm the target stable version is actually available from NuGet.org, then edit only the ADR Guard `version` in `.config/dotnet-tools.json`. A GitHub tag or release note is not proof that the tool package was published. Validate the update with:
+
+```bash
+dotnet tool restore
+dotnet tool list --local
+dotnet tool run adr-guard -- --version
+dotnet tool run adr-guard -- check docs/adr
+```
+
+Run direct template generation, NuGet template-package E2E, and GitHub Template initializer parity before merging. Update version assertions in the E2E workflows/scripts together with the manifest. Do not hand-edit package lock files: .NET tools are restored from their own manifest and do not belong in `packages.lock.json`.
 
 ## Analyzer, SDK and packaging baseline
 
@@ -457,6 +495,9 @@ Then validate the generated files before repository metadata exists:
 
 ```bash
 dotnet tool restore
+dotnet tool list --local
+dotnet tool run adr-guard -- --version
+dotnet tool run adr-guard -- check docs/adr
 dotnet restore --locked-mode
 dotnet format --verify-no-changes --no-restore
 dotnet build --configuration Release --no-restore
@@ -493,7 +534,7 @@ A valid generated project must not contain unintended matches.
 
 ## Automated generation tests
 
-`.github/workflows/template-validation.yml` automates the general development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, checks the expected paths and exclusions, confirms that reusable CI/security/release workflows are present and parametrized, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
+`.github/workflows/template-validation.yml` automates the general development sample described above. It installs the template from the current checkout, confirms the CLI registration, generates `Validation.SampleLibrary`, verifies the renamed workspace, ADR configuration, local tool manifest, extension/tasks and generated CI command, executes ADR Guard, initializes a temporary Git repository with a remote, restores locked dependencies, formats, builds, tests, packs, validates Source Link, and fails on leaked template/reference identities.
 
 `.github/workflows/sonar-template-validation.yml` complements that E2E with the optional external-quality contract: scanner version, opt-in behavior, reusable Sonar workflow generation, coordinate parametrization, OpenCover configuration, absence of source identity leakage, and build/test of the generated sample.
 
@@ -501,9 +542,9 @@ A valid generated project must not contain unintended matches.
 
 `.github/workflows/release-publishing-validation.yml` is maintenance-only. It validates the release workflow contract, release metadata resolution, `publish=false` behavior, `publish=true` protection, the `NUGET_USER` decision matrix, release candidate manifest/checksum verification, attestation requirements, draft-release ordering, placeholder safeguards, and propagation of the reusable release flow into a generated library.
 
-`.github/workflows/github-template-initialization-validation.yml` is maintenance-only. It proves that a simulated GitHub Template Repository copy initialized through `scripts/initialize-repository.sh` is equivalent to direct `dotnet new` output, that bootstrap-only files self-remove, that invalid inputs and unsafe GitHub contexts fail before destructive replacement, and that the initialized output passes the generated-project restore, format, build, test, pack, and Source Link verification contract.
+`.github/workflows/github-template-initialization-validation.yml` is maintenance-only. It proves that a simulated GitHub Template Repository copy initialized through `scripts/initialize-repository.sh` is equivalent to direct `dotnet new` output, that the workspace is renamed, ADR files/configuration survive, bootstrap-only files self-remove, invalid inputs and unsafe GitHub contexts fail before destructive replacement, and the initialized output passes ADR, restore, format, build, test, pack, and Source Link validation.
 
-`.github/workflows/template-package-validation.yml` is maintenance-only. It packs `RodriOliveira.DotNet.Library.Template`, validates `.nuspec` metadata and package contents with `scripts/verify-template-package.cs`, installs the produced `.nupkg`, confirms `dotnet new list rodri-lib`, generates `Validation.SampleLibrary`, compares that output against direct repository-template generation, validates uninstall/reinstall behavior, and runs the generated-project restore, format, build, test, pack, and Source Link verification flow.
+`.github/workflows/template-package-validation.yml` is maintenance-only. It packs `RodriOliveira.DotNet.Library.Template`, validates `.nuspec` metadata and package contents with `scripts/verify-template-package.cs`, installs the produced `.nupkg`, confirms `dotnet new list rodri-lib`, generates `Validation.SampleLibrary`, checks the renamed workspace/ADR/CLI/editor contract, compares that output against direct repository-template generation, validates uninstall/reinstall behavior, and runs ADR Guard plus the generated-project restore, format, build, test, pack, and Source Link verification flow.
 
 Release changes must additionally confirm that:
 

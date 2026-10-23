@@ -8,6 +8,13 @@
         "dotnet-sonarscanner"
       ],
       "rollForward": false
+    },
+    "rodrioliveira.adrguard": {
+      "version": "1.9.0",
+      "commands": [
+        "adr-guard"
+      ],
+      "rollForward": false
     }
   }
 }

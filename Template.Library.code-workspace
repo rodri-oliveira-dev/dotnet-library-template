@@ -1,0 +1,36 @@
+{
+  "folders": [
+    {
+      "name": "Template.Library",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.encoding": "utf8",
+    "files.eol": "\n",
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true,
+      "**/artifacts": true,
+      "**/TestResults": true,
+      "**/.tmp": true,
+      "**/tmp": true
+    },
+    "dotnet.defaultSolution": "Template.Library.slnx",
+    "adrGuard.validation.directory": "docs/adr",
+    "adrGuard.validation.adrFormat": "canonical",
+    "adrGuard.validation.onSave": false,
+    "adrGuard.validation.baseReference": "main",
+    "[csharp]": {
+      "editor.defaultFormatter": "ms-dotnettools.csharp",
+      "editor.formatOnSave": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-dotnettools.csdevkit",
+      "redhat.vscode-yaml",
+      "rodrioliveira.adr-guard"
+    ]
+  }
+}

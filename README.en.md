@@ -58,10 +58,34 @@ Generated output includes, among other guarantees:
 - **CI and security:** CodeQL, Dependency Review, Dependabot, least-privilege workflow permissions, SHA-pinned actions, and checkout without persisted credentials.
 - **Versioning and release:** Semantic Versioning, centralized base version, manual release validation before publication, release candidate manifest/checksums, and NuGet.org Trusted Publishing through GitHub OIDC.
 - **Governance:** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `CHANGELOG.md`.
+- **Architecture decisions:** a repository-pinned ADR Guard CLI, canonical records under `docs/adr`, CI enforcement, and a reusable VS Code workspace.
 
 Template-specific validation automation remains in the source repository and is not part of generated output.
 
 Release, supply-chain, OIDC, package-validation, and E2E details live in the [advanced reference](docs/advanced-reference.md).
+
+## ADR Guard and the VS Code workspace
+
+ADR Guard gives generated libraries a repeatable documentation contract; it checks ADR structure and relationships, while architectural approval remains a human responsibility. Restore the pinned `RodriOliveira.AdrGuard` tool from the repository manifest instead of installing it globally:
+
+```bash
+dotnet tool restore
+dotnet tool run adr-guard -- --version
+dotnet tool run adr-guard -- check docs/adr
+```
+
+Start a decision with the canonical extended template, replace the prompts with the actual trade-offs, and validate it before committing:
+
+```bash
+dotnet tool run adr-guard -- new docs/adr --title "Decision title" --template extended
+dotnet tool run adr-guard -- check docs/adr
+```
+
+The read-only `ADR Guard: Check` task matches the pull-request and `main` CI gate. `ADR Guard: Index` is deliberately manual because it writes `docs/adr/README.md`; no AI provider, credential, review, or generation feature is enabled by the baseline.
+
+Open `Template.Library.code-workspace`—renamed to match a generated library—to load C# Dev Kit, YAML, and ADR Guard recommendations. The workspace loads the folder tasks from `.vscode/tasks.json`, including `Workspace: Validate All`, which sequences tool/dependency restore, ADR validation, Release build, tests, coverage, and pack.
+
+The optional `rodrioliveira.adr-guard` extension and the CLI are shipped independently. The extension discovers executables in the VS Code extension host environment, so a manifest-only local tool may require an absolute, trusted host-local `adrGuard.cli.path`. That machine-specific setting is intentionally not committed to the portable workspace.
 
 ## Install, update, and remove
 

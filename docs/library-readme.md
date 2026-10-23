@@ -24,7 +24,40 @@ dotnet tool restore
 dotnet restore --locked-mode
 ```
 
-The local tool manifest includes SonarScanner for .NET. Installing/restoring the tool does not enable SonarQube Cloud analysis by itself; the integration remains opt-in through the `SONAR_TOKEN` repository secret.
+The local tool manifest includes SonarScanner for .NET and ADR Guard. Installing/restoring SonarScanner does not enable SonarQube Cloud analysis by itself; that integration remains opt-in through the `SONAR_TOKEN` repository secret.
+
+## Architecture decisions and VS Code workspace
+
+ADR Guard validates the structure and lifecycle of Architecture Decision Records (ADRs) kept in `docs/adr`. It does not decide whether a technical choice is correct. The CLI is pinned in the local tool manifest, so no global installation is required:
+
+```bash
+dotnet tool restore
+dotnet tool run adr-guard -- --version
+dotnet tool run adr-guard -- check docs/adr
+```
+
+Create an extended canonical ADR, replace every prompt with the real context and trade-offs, and validate it before committing:
+
+```bash
+dotnet tool run adr-guard -- new docs/adr --title "Decision title" --template extended
+dotnet tool run adr-guard -- check docs/adr
+```
+
+Open `Template.Library.code-workspace` in VS Code. It selects `Template.Library.slnx`, uses portable UTF-8/LF and C# formatting settings, and recommends C# Dev Kit, YAML, and the optional ADR Guard extension. All individual and aggregate tasks live together in `.vscode/tasks.json`, so their `dependsOn` references share the same folder scope. The tasks available from **Tasks: Run Task** are:
+
+- `.NET: Restore Tools`
+- `.NET: Restore Dependencies`
+- `.NET: Build Release`
+- `.NET: Test Release`
+- `.NET: Coverage`
+- `.NET: Pack Release`
+- `ADR Guard: Check`
+- `ADR Guard: Index`
+- `Workspace: Validate All`
+
+`ADR Guard: Check` is read-only. `ADR Guard: Index` writes or updates `docs/adr/README.md` and therefore runs only when explicitly selected. `Workspace: Validate All` excludes indexing and runs the deterministic restore, ADR validation, build, test, coverage, and pack steps in sequence.
+
+The extension `rodrioliveira.adr-guard` and the `RodriOliveira.AdrGuard` CLI are separate distributions. The extension searches for an executable in its local or remote extension-host environment and may not automatically see a CLI restored only through the repository manifest. If discovery fails, configure the machine-scoped `adrGuard.cli.path` to a trusted absolute executable path on that host. A machine-specific path is intentionally not committed. The baseline does not enable AI-assisted drafting or review.
 
 ## Build
 
@@ -112,7 +145,7 @@ Before cutting a stable release, move relevant entries from the `Unreleased` sec
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on pull requests and pushes to `main`. It restores tools and locked dependencies, verifies formatting, builds in Release, runs tests, collects Cobertura coverage, packs and validates the NuGet package, and publishes two downloadable workflow artifacts:
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main`. It restores tools, runs `adr-guard check docs/adr`, restores locked dependencies, verifies formatting, builds in Release, runs tests, collects Cobertura coverage, packs and validates the NuGet package, and publishes two downloadable workflow artifacts:
 
 - `coverage` with `coverage.cobertura.xml`;
 - `nuget-packages` with `.nupkg` and `.snupkg` files.
@@ -262,6 +295,7 @@ The workflow creates or resumes a draft GitHub Release before any enabled NuGet 
 
 ```text
 .
+├── .adrguard.yml
 ├── .config/
 │   └── dotnet-tools.json
 ├── .github/
@@ -271,6 +305,13 @@ The workflow creates or resumes a draft GitHub Release before any enabled NuGet 
 │       ├── dependency-review.yml
 │       ├── release.yml
 │       └── sonar.yml
+├── .vscode/
+│   ├── extensions.json
+│   ├── settings.json
+│   └── tasks.json
+├── docs/
+│   └── adr/
+│       └── 0001-adopt-adr-guard-for-architecture-decisions.md
 ├── scripts/
 │   ├── release-candidate.cs
 │   ├── resolve-nuget-publishing.sh
@@ -288,6 +329,7 @@ The workflow creates or resumes a draft GitHub Release before any enabled NuGet 
 ├── LICENSE
 ├── README.md
 ├── SECURITY.md
+├── Template.Library.code-workspace
 ├── Template.Library.slnx
 └── global.json
 ```
