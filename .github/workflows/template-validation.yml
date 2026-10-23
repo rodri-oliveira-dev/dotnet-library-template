@@ -158,28 +158,40 @@ jobs:
             grep -Fq "open-pull-requests-limit: $expected_limit" <<< "$block"
           }
 
-          validate_grouped_minor_patch() {
+          validate_grouped_version_updates() {
             local ecosystem="$1"
             local block
             block="$(ecosystem_block "$ecosystem")"
 
             grep -Fq 'groups:' <<< "$block"
-            grep -Fq 'update-types:' <<< "$block"
-            grep -Fq -- '- "minor"' <<< "$block"
-            grep -Fq -- '- "patch"' <<< "$block"
+            grep -Fq 'applies-to: "version-updates"' <<< "$block"
+            grep -Fq 'patterns:' <<< "$block"
+            grep -Fq -- '- "*"' <<< "$block"
+
+            if grep -Fq 'update-types:' <<< "$block"; then
+              echo "Dependabot deve agrupar major, minor e patch para $ecosystem."
+              exit 1
+            fi
+          }
+
+          validate_grouped_security_updates() {
+            local ecosystem="$1"
+            local block
+            block="$(ecosystem_block "$ecosystem")"
+
+            grep -Fq 'applies-to: "security-updates"' <<< "$block"
+            grep -Fq -- '- "*"' <<< "$block"
           }
 
           validate_ecosystem "nuget" 5
           validate_ecosystem "dotnet-sdk" 2
           validate_ecosystem "github-actions" 5
-          validate_grouped_minor_patch "nuget"
-          validate_grouped_minor_patch "github-actions"
 
-          sdk_block="$(ecosystem_block "dotnet-sdk")"
-          if grep -Fq 'groups:' <<< "$sdk_block"; then
-            echo "Atualizações do .NET SDK devem permanecer em PRs dedicados."
-            exit 1
-          fi
+          validate_grouped_version_updates "nuget"
+          validate_grouped_version_updates "dotnet-sdk"
+          validate_grouped_version_updates "github-actions"
+          validate_grouped_security_updates "nuget"
+          validate_grouped_security_updates "github-actions"
 
           if grep -Eq 'registries:|secrets\.|token:|password:' "$file"; then
             echo "A baseline do Dependabot não deve conter registry privado ou credencial."
