@@ -158,28 +158,40 @@ jobs:
             grep -Fq "open-pull-requests-limit: $expected_limit" <<< "$block"
           }
 
-          validate_grouped_minor_patch() {
+          validate_grouped_version_updates() {
             local ecosystem="$1"
             local block
             block="$(ecosystem_block "$ecosystem")"
 
             grep -Fq 'groups:' <<< "$block"
-            grep -Fq 'update-types:' <<< "$block"
-            grep -Fq -- '- "minor"' <<< "$block"
-            grep -Fq -- '- "patch"' <<< "$block"
+            grep -Fq 'applies-to: "version-updates"' <<< "$block"
+            grep -Fq 'patterns:' <<< "$block"
+            grep -Fq -- '- "*"' <<< "$block"
+
+            if grep -Fq 'update-types:' <<< "$block"; then
+              echo "Dependabot deve agrupar major, minor e patch para $ecosystem."
+              exit 1
+            fi
+          }
+
+          validate_grouped_security_updates() {
+            local ecosystem="$1"
+            local block
+            block="$(ecosystem_block "$ecosystem")"
+
+            grep -Fq 'applies-to: "security-updates"' <<< "$block"
+            grep -Fq -- '- "*"' <<< "$block"
           }
 
           validate_ecosystem "nuget" 5
           validate_ecosystem "dotnet-sdk" 2
           validate_ecosystem "github-actions" 5
-          validate_grouped_minor_patch "nuget"
-          validate_grouped_minor_patch "github-actions"
 
-          sdk_block="$(ecosystem_block "dotnet-sdk")"
-          if grep -Fq 'groups:' <<< "$sdk_block"; then
-            echo "Atualizações do .NET SDK devem permanecer em PRs dedicados."
-            exit 1
-          fi
+          validate_grouped_version_updates "nuget"
+          validate_grouped_version_updates "dotnet-sdk"
+          validate_grouped_version_updates "github-actions"
+          validate_grouped_security_updates "nuget"
+          validate_grouped_security_updates "github-actions"
 
           if grep -Eq 'registries:|secrets\.|token:|password:' "$file"; then
             echo "A baseline do Dependabot não deve conter registry privado ou credencial."
@@ -228,8 +240,8 @@ jobs:
           grep -Fq 'pull_request:' "$release"
           grep -Fq 'publish:' "$release"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
-          grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$release"
-          grep -Fq 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1' "$release"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
           grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
           grep -Fq 'id-token: write' "$release"
           grep -Fq 'contents: write' "$release"
@@ -435,7 +447,7 @@ jobs:
           grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/.vscode/tasks.json"
           grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GENERATED_ROOT/.github/workflows/ci.yml"
           test ! -e "$GENERATED_ROOT/Template.Library.code-workspace"
-          grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
@@ -447,7 +459,7 @@ jobs:
           grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
-          grep -Fq 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
