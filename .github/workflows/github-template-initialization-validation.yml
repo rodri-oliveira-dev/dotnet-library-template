@@ -171,10 +171,17 @@ jobs:
         run: |
           required=(
             'Validation.SampleLibrary.slnx'
+            'Validation.SampleLibrary.code-workspace'
             'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj'
             'tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj'
             'README.md'
             'CHANGELOG.md'
+            '.config/dotnet-tools.json'
+            '.adrguard.yml'
+            'docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md'
+            '.vscode/extensions.json'
+            '.vscode/settings.json'
+            '.vscode/tasks.json'
             '.github/workflows/ci.yml'
             '.github/workflows/release.yml'
             'scripts/verify-package.cs'
@@ -216,6 +223,16 @@ jobs:
 
           grep -Fq '# Validation.SampleLibrary' "$GITHUB_TEMPLATE_COPY/README.md"
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GITHUB_TEMPLATE_COPY/.github/workflows/release.yml"
+          grep -Fq 'Validation.SampleLibrary.slnx' "$GITHUB_TEMPLATE_COPY/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'rodrioliveira.adrguard' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
+          grep -Fq '"version": "1.9.0"' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
+          grep -Fq '"rollForward": false' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
+          grep -Fq 'adr-directory: "docs/adr"' "$GITHUB_TEMPLATE_COPY/.adrguard.yml"
+          grep -Fq 'rodrioliveira.adr-guard' "$GITHUB_TEMPLATE_COPY/.vscode/extensions.json"
+          grep -Fq 'ADR Guard: Check' "$GITHUB_TEMPLATE_COPY/.vscode/tasks.json"
+          grep -Fq 'Workspace: Validate All' "$GITHUB_TEMPLATE_COPY/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GITHUB_TEMPLATE_COPY/.github/workflows/ci.yml"
+          test ! -e "$GITHUB_TEMPLATE_COPY/Template.Library.code-workspace"
 
           matches="$(grep -R -I -n -E 'Template\.Library' "$GITHUB_TEMPLATE_COPY" \
             --exclude-dir=.git \
@@ -242,6 +259,13 @@ jobs:
       - name: Restore local tools in initialized output
         working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
         run: dotnet tool restore
+
+      - name: Verify ADR Guard in initialized output
+        working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}
+        run: |
+          dotnet tool list --local
+          dotnet tool run adr-guard -- --version
+          dotnet tool run adr-guard -- check docs/adr
 
       - name: Restore dependencies in initialized output
         working-directory: ${{ env.GITHUB_TEMPLATE_COPY }}

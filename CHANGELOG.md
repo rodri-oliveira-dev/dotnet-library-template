@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Reproducible ADR Guard 1.9.0 integration with a local CLI manifest, canonical initial ADR, pull-request/main CI validation, optional VS Code extension, reusable renamed workspace, and E2E coverage for both template distribution paths.
 - Primary GitHub Actions CI workflow with locked restore, Release build, tests, Cobertura coverage, NuGet packaging, package validation, and downloadable coverage/package artifacts.
 - CodeQL security analysis for C# on pull requests, pushes to `main`, and a weekly scheduled scan using a reproducible manual .NET build.
 - Dependency Review on pull requests to block newly introduced dependencies with high or critical known vulnerabilities.

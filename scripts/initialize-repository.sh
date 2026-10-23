@@ -131,12 +131,19 @@ validate_generated_output() {
   local project_name="$2"
   local required=(
     "$project_name.slnx"
+    "$project_name.code-workspace"
     "src/$project_name/$project_name.csproj"
     "tests/$project_name.Tests/$project_name.Tests.csproj"
     'README.md'
     'Directory.Build.props'
     'Directory.Packages.props'
     'global.json'
+    '.config/dotnet-tools.json'
+    '.adrguard.yml'
+    'docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md'
+    '.vscode/extensions.json'
+    '.vscode/settings.json'
+    '.vscode/tasks.json'
     '.github/workflows/ci.yml'
     '.github/workflows/release.yml'
     'scripts/verify-package.cs'
@@ -171,6 +178,10 @@ validate_generated_output() {
       fail "Maintenance-only path leaked into generated output: $path."
     fi
   done
+
+  if [[ -e "$generated/Template.Library.code-workspace" ]]; then
+    fail 'Generated output still contains the neutral workspace filename.'
+  fi
 
   matches="$(grep -R -I -n -E 'Template\.Library' "$generated" \
     --exclude-dir=.git \

@@ -67,6 +67,36 @@ diff -ruN \
   "$repository_output" \
   "$package_output"
 
+required=(
+  'Validation.SampleLibrary.slnx'
+  'Validation.SampleLibrary.code-workspace'
+  '.config/dotnet-tools.json'
+  '.adrguard.yml'
+  'docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md'
+  '.vscode/extensions.json'
+  '.vscode/settings.json'
+  '.vscode/tasks.json'
+  '.github/workflows/ci.yml'
+)
+
+for path in "${required[@]}"; do
+  if [[ ! -e "$package_output/$path" ]]; then
+    echo "Generated template is missing expected path: $path" >&2
+    exit 1
+  fi
+done
+
+test ! -e "$package_output/Template.Library.code-workspace"
+grep -Fq 'Validation.SampleLibrary.slnx' "$package_output/Validation.SampleLibrary.code-workspace"
+grep -Fq 'rodrioliveira.adrguard' "$package_output/.config/dotnet-tools.json"
+grep -Fq '"version": "1.9.0"' "$package_output/.config/dotnet-tools.json"
+grep -Fq '"rollForward": false' "$package_output/.config/dotnet-tools.json"
+grep -Fq 'adr-directory: "docs/adr"' "$package_output/.adrguard.yml"
+grep -Fq 'rodrioliveira.adr-guard' "$package_output/.vscode/extensions.json"
+grep -Fq 'ADR Guard: Check' "$package_output/.vscode/tasks.json"
+grep -Fq 'Workspace: Validate All' "$package_output/Validation.SampleLibrary.code-workspace"
+grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$package_output/.github/workflows/ci.yml"
+
 git -C "$package_output" init -b main
 git -C "$package_output" config user.name 'Template Package Validation'
 git -C "$package_output" config user.email 'template-package-validation@example.invalid'
@@ -75,6 +105,12 @@ git -C "$package_output" commit -m 'Initial generated library'
 git -C "$package_output" remote add origin https://github.com/example/Validation.SampleLibrary.git
 
 dotnet tool restore --tool-manifest "$package_output/.config/dotnet-tools.json"
+(
+  cd "$package_output"
+  dotnet tool list --local
+  dotnet tool run adr-guard -- --version
+  dotnet tool run adr-guard -- check docs/adr
+)
 dotnet restore "$package_output/Validation.SampleLibrary.slnx" --locked-mode
 dotnet format "$package_output/Validation.SampleLibrary.slnx" --verify-no-changes --no-restore
 dotnet build "$package_output/Validation.SampleLibrary.slnx" --configuration Release --no-restore
