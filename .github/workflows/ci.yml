@@ -37,6 +37,9 @@ jobs:
       - name: Listar ferramentas locais
         run: dotnet tool list --local
 
+      - name: Validar ADRs
+        run: dotnet tool run adr-guard -- check docs/adr
+
       - name: Restaurar dependências em locked mode
         run: dotnet restore Template.Library.slnx --locked-mode
 
