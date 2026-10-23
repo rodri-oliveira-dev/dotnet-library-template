@@ -230,7 +230,7 @@ jobs:
           grep -Fq 'adr-directory: "docs/adr"' "$GITHUB_TEMPLATE_COPY/.adrguard.yml"
           grep -Fq 'rodrioliveira.adr-guard' "$GITHUB_TEMPLATE_COPY/.vscode/extensions.json"
           grep -Fq 'ADR Guard: Check' "$GITHUB_TEMPLATE_COPY/.vscode/tasks.json"
-          grep -Fq 'Workspace: Validate All' "$GITHUB_TEMPLATE_COPY/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'Workspace: Validate All' "$GITHUB_TEMPLATE_COPY/.vscode/tasks.json"
           grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GITHUB_TEMPLATE_COPY/.github/workflows/ci.yml"
           test ! -e "$GITHUB_TEMPLATE_COPY/Template.Library.code-workspace"
 

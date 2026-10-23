@@ -32,24 +32,5 @@
       "redhat.vscode-yaml",
       "rodrioliveira.adr-guard"
     ]
-  },
-  "tasks": {
-    "version": "2.0.0",
-    "tasks": [
-      {
-        "label": "Workspace: Validate All",
-        "dependsOrder": "sequence",
-        "dependsOn": [
-          ".NET: Restore Tools",
-          ".NET: Restore Dependencies",
-          "ADR Guard: Check",
-          ".NET: Build Release",
-          ".NET: Test Release",
-          ".NET: Coverage",
-          ".NET: Pack Release"
-        ],
-        "problemMatcher": []
-      }
-    ]
   }
 }

@@ -83,7 +83,7 @@ dotnet tool run adr-guard -- check docs/adr
 
 The read-only `ADR Guard: Check` task matches the pull-request and `main` CI gate. `ADR Guard: Index` is deliberately manual because it writes `docs/adr/README.md`; no AI provider, credential, review, or generation feature is enabled by the baseline.
 
-Open `Template.Library.code-workspace`—renamed to match a generated library—to load C# Dev Kit, YAML, and ADR Guard recommendations. The workspace reuses the folder tasks from `.vscode/tasks.json` and adds `Workspace: Validate All`, which sequences tool/dependency restore, ADR validation, Release build, tests, coverage, and pack without duplicating the individual commands.
+Open `Template.Library.code-workspace`—renamed to match a generated library—to load C# Dev Kit, YAML, and ADR Guard recommendations. The workspace loads the folder tasks from `.vscode/tasks.json`, including `Workspace: Validate All`, which sequences tool/dependency restore, ADR validation, Release build, tests, coverage, and pack.
 
 The optional `rodrioliveira.adr-guard` extension and the CLI are shipped independently. The extension discovers executables in the VS Code extension host environment, so a manifest-only local tool may require an absolute, trusted host-local `adrGuard.cli.path`. That machine-specific setting is intentionally not committed to the portable workspace.
 

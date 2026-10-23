@@ -432,7 +432,7 @@ jobs:
           grep -Fq 'rodrioliveira.adr-guard' "$GENERATED_ROOT/.vscode/extensions.json"
           grep -Fq 'ADR Guard: Check' "$GENERATED_ROOT/.vscode/tasks.json"
           grep -Fq 'ADR Guard: Index' "$GENERATED_ROOT/.vscode/tasks.json"
-          grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/.vscode/tasks.json"
           grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GENERATED_ROOT/.github/workflows/ci.yml"
           test ! -e "$GENERATED_ROOT/Template.Library.code-workspace"
           grep -Fq 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7' "$GENERATED_ROOT/.github/workflows/ci.yml"

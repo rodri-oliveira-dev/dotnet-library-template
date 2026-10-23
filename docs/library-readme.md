@@ -43,7 +43,7 @@ dotnet tool run adr-guard -- new docs/adr --title "Decision title" --template ex
 dotnet tool run adr-guard -- check docs/adr
 ```
 
-Open `Template.Library.code-workspace` in VS Code. It selects `Template.Library.slnx`, uses portable UTF-8/LF and C# formatting settings, and recommends C# Dev Kit, YAML, and the optional ADR Guard extension. It reuses the individual folder tasks from `.vscode/tasks.json` and adds the aggregate workspace task without duplicating their commands. The tasks available from **Tasks: Run Task** are:
+Open `Template.Library.code-workspace` in VS Code. It selects `Template.Library.slnx`, uses portable UTF-8/LF and C# formatting settings, and recommends C# Dev Kit, YAML, and the optional ADR Guard extension. All individual and aggregate tasks live together in `.vscode/tasks.json`, so their `dependsOn` references share the same folder scope. The tasks available from **Tasks: Run Task** are:
 
 - `.NET: Restore Tools`
 - `.NET: Restore Dependencies`

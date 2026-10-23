@@ -83,7 +83,7 @@ dotnet tool run adr-guard -- check docs/adr
 
 `ADR Guard: Index` atualiza `docs/adr/README.md` e, por escrever no repositório, só é executada quando o desenvolvedor a solicita. `ADR Guard: Check` é somente leitura. O CI executa o mesmo `check` em pull requests e pushes para `main`, sem secrets ou provedores de IA.
 
-Abra `Template.Library.code-workspace` (ou o arquivo renomeado na biblioteca gerada) para usar as recomendações de C# Dev Kit, YAML e ADR Guard. O workspace carrega as tasks de pasta em `.vscode/tasks.json` e compõe `Workspace: Validate All`, que restaura ferramentas/dependências, valida ADRs, compila, testa, coleta cobertura e empacota em ordem sem duplicar os comandos individuais.
+Abra `Template.Library.code-workspace` (ou o arquivo renomeado na biblioteca gerada) para usar as recomendações de C# Dev Kit, YAML e ADR Guard. O workspace carrega as tasks de pasta em `.vscode/tasks.json`, incluindo `Workspace: Validate All`, que restaura ferramentas/dependências, valida ADRs, compila, testa, coleta cobertura e empacota em ordem.
 
 A extensão `rodrioliveira.adr-guard` é opcional e distribuída separadamente da CLI. Ela procura `adr-guard` no ambiente do processo do VS Code; uma ferramenta restaurada somente no manifesto local pode não estar nesse `PATH`. Se necessário, configure `adrGuard.cli.path` no host local/remoto com um caminho absoluto confiável, conforme a documentação da extensão. O template não fixa esse caminho porque ele não é portável.
 

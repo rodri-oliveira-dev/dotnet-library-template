@@ -94,7 +94,7 @@ grep -Fq '"rollForward": false' "$package_output/.config/dotnet-tools.json"
 grep -Fq 'adr-directory: "docs/adr"' "$package_output/.adrguard.yml"
 grep -Fq 'rodrioliveira.adr-guard' "$package_output/.vscode/extensions.json"
 grep -Fq 'ADR Guard: Check' "$package_output/.vscode/tasks.json"
-grep -Fq 'Workspace: Validate All' "$package_output/Validation.SampleLibrary.code-workspace"
+grep -Fq 'Workspace: Validate All' "$package_output/.vscode/tasks.json"
 grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$package_output/.github/workflows/ci.yml"
 
 git -C "$package_output" init -b main
