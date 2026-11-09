@@ -29,6 +29,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validar SHA consistente das ações CodeQL
+        shell: bash
+        run: |
+          file=".github/workflows/codeql.yml"
+          pinned_count=$(grep -Ec '^[[:space:]]*uses: github/codeql-action/(init|analyze)@[0-9a-f]{40}([[:space:]]|$)' "$file")
+          distinct_sha_count=$(grep -Eo 'github/codeql-action/(init|analyze)@[0-9a-f]{40}' "$file" | cut -d@ -f2 | sort -u | wc -l)
+          if [ "$pinned_count" -ne 2 ] || [ "$distinct_sha_count" -ne 1 ]; then
+            echo "::error::CodeQL init/analyze must both be pinned to the same full commit SHA."
+            exit 1
+          fi
+
       - name: Configurar .NET 10
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
