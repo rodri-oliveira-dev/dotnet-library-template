@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Configurar .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -213,8 +213,13 @@ jobs:
           grep -Fq 'schedule:' "$file"
           grep -Fq 'contents: read' "$file"
           grep -Fq 'security-events: write' "$file"
-          grep -Fq 'github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$file"
-          grep -Fq 'github/codeql-action/analyze@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$file"
+          codeql_init_ref="$(grep -Eo 'github/codeql-action/init@[0-9a-f]{40}' "$file")"
+          codeql_analyze_ref="$(grep -Eo 'github/codeql-action/analyze@[0-9a-f]{40}' "$file")"
+          test -n "$codeql_init_ref"
+          test -n "$codeql_analyze_ref"
+          test "${codeql_init_ref##*@}" = "${codeql_analyze_ref##*@}"
+          grep -Fq "$codeql_init_ref # v4" "$file"
+          grep -Fq "$codeql_analyze_ref # v4" "$file"
           grep -Fq 'languages: csharp' "$file"
           grep -Fq 'build-mode: manual' "$file"
           grep -Fq 'dotnet restore Template.Library.slnx --locked-mode' "$file"
@@ -438,7 +443,9 @@ jobs:
           grep -Fq 'privately report suspected vulnerabilities' "$GENERATED_ROOT/SECURITY.md"
           grep -Fq 'Validation.SampleLibrary.slnx' "$GENERATED_ROOT/Validation.SampleLibrary.code-workspace"
           grep -Fq 'rodrioliveira.adrguard' "$GENERATED_ROOT/.config/dotnet-tools.json"
-          grep -Fq '"version": "1.9.0"' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          expected_adr_guard_version="$(sed -n '/"rodrioliveira.adrguard"/,/}/s/.*"version": "\([^"]*\)".*/\1/p' .config/dotnet-tools.json)"
+          test -n "$expected_adr_guard_version"
+          grep -Fq "\"version\": \"$expected_adr_guard_version\"" "$GENERATED_ROOT/.config/dotnet-tools.json"
           grep -Fq '"rollForward": false' "$GENERATED_ROOT/.config/dotnet-tools.json"
           grep -Fq 'adr-directory: "docs/adr"' "$GENERATED_ROOT/.adrguard.yml"
           grep -Fq 'rodrioliveira.adr-guard' "$GENERATED_ROOT/.vscode/extensions.json"
@@ -450,8 +457,12 @@ jobs:
           grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
           grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
-          grep -Fq 'github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
-          grep -Fq 'github/codeql-action/analyze@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          source_codeql_init_ref="$(grep -Eo 'github/codeql-action/init@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          source_codeql_analyze_ref="$(grep -Eo 'github/codeql-action/analyze@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          test -n "$source_codeql_init_ref"
+          test -n "$source_codeql_analyze_ref"
+          grep -Fq "$source_codeql_init_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq "$source_codeql_analyze_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'build-mode: manual' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"

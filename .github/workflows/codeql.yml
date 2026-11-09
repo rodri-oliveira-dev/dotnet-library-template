@@ -29,13 +29,24 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validar SHA consistente das ações CodeQL
+        shell: bash
+        run: |
+          file=".github/workflows/codeql.yml"
+          pinned_count=$(grep -Ec '^[[:space:]]*uses: github/codeql-action/(init|analyze)@[0-9a-f]{40}([[:space:]]|$)' "$file")
+          distinct_sha_count=$(grep -Eo 'github/codeql-action/(init|analyze)@[0-9a-f]{40}' "$file" | cut -d@ -f2 | sort -u | wc -l)
+          if [ "$pinned_count" -ne 2 ] || [ "$distinct_sha_count" -ne 1 ]; then
+            echo "::error::CodeQL init/analyze must both be pinned to the same full commit SHA."
+            exit 1
+          fi
+
       - name: Configurar .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: '10.0.x'
 
       - name: Inicializar CodeQL
-        uses: github/codeql-action/init@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4
+        uses: github/codeql-action/init@ce8b5602e2e75eddc698f13db2342ef698999255 # v4
         with:
           languages: csharp
           build-mode: manual
@@ -47,6 +58,6 @@ jobs:
         run: dotnet build Template.Library.slnx --configuration Release --no-restore
 
       - name: Executar análise CodeQL
-        uses: github/codeql-action/analyze@4c0873ef8656cb3c50b3f42fb63bc1ade0cfa827 # v4
+        uses: github/codeql-action/analyze@ce8b5602e2e75eddc698f13db2342ef698999255 # v4
         with:
           category: '/language:csharp'

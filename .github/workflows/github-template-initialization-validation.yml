@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Configure .NET 10
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: '10.0.x'
 
@@ -225,7 +225,9 @@ jobs:
           grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GITHUB_TEMPLATE_COPY/.github/workflows/release.yml"
           grep -Fq 'Validation.SampleLibrary.slnx' "$GITHUB_TEMPLATE_COPY/Validation.SampleLibrary.code-workspace"
           grep -Fq 'rodrioliveira.adrguard' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
-          grep -Fq '"version": "1.9.0"' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
+          expected_adr_guard_version="$(sed -n '/"rodrioliveira.adrguard"/,/}/s/.*"version": "\([^"]*\)".*/\1/p' .config/dotnet-tools.json)"
+          test -n "$expected_adr_guard_version"
+          grep -Fq "\"version\": \"$expected_adr_guard_version\"" "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
           grep -Fq '"rollForward": false' "$GITHUB_TEMPLATE_COPY/.config/dotnet-tools.json"
           grep -Fq 'adr-directory: "docs/adr"' "$GITHUB_TEMPLATE_COPY/.adrguard.yml"
           grep -Fq 'rodrioliveira.adr-guard' "$GITHUB_TEMPLATE_COPY/.vscode/extensions.json"

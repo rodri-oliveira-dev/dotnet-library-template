@@ -89,7 +89,12 @@ done
 test ! -e "$package_output/Template.Library.code-workspace"
 grep -Fq 'Validation.SampleLibrary.slnx' "$package_output/Validation.SampleLibrary.code-workspace"
 grep -Fq 'rodrioliveira.adrguard' "$package_output/.config/dotnet-tools.json"
-grep -Fq '"version": "1.9.0"' "$package_output/.config/dotnet-tools.json"
+expected_adr_guard_version="$(sed -n '/"rodrioliveira.adrguard"/,/}/s/.*"version": "\([^"]*\)".*/\1/p' "$repository_root/.config/dotnet-tools.json")"
+if [[ -z "$expected_adr_guard_version" ]]; then
+  echo 'Could not resolve ADR Guard version from the repository tool manifest.' >&2
+  exit 1
+fi
+grep -Fq "\"version\": \"$expected_adr_guard_version\"" "$package_output/.config/dotnet-tools.json"
 grep -Fq '"rollForward": false' "$package_output/.config/dotnet-tools.json"
 grep -Fq 'adr-directory: "docs/adr"' "$package_output/.adrguard.yml"
 grep -Fq 'rodrioliveira.adr-guard' "$package_output/.vscode/extensions.json"
