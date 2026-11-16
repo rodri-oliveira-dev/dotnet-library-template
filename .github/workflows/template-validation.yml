@@ -163,12 +163,20 @@ jobs:
             local block
             block="$(ecosystem_block "$ecosystem")"
 
-            grep -Fq 'groups:' <<< "$block"
-            grep -Fq 'applies-to: "version-updates"' <<< "$block"
-            grep -Fq 'patterns:' <<< "$block"
-            grep -Fq -- '- "*"' <<< "$block"
+            # Only inspect dependency groups: top-level ignore.update-types is allowed.
+            local groups_block
+            groups_block="$(awk '
+              /^    groups:/ { in_groups=1; print; next }
+              in_groups && /^    [^[:space:]]/ { exit }
+              in_groups { print }
+            ' <<< "$block")"
 
-            if grep -Fq 'update-types:' <<< "$block"; then
+            grep -Fq 'groups:' <<< "$groups_block"
+            grep -Fq 'applies-to: "version-updates"' <<< "$groups_block"
+            grep -Fq 'patterns:' <<< "$groups_block"
+            grep -Fq -- '- "*"' <<< "$groups_block"
+
+            if grep -Fq 'update-types:' <<< "$groups_block"; then
               echo "Dependabot deve agrupar major, minor e patch para $ecosystem."
               exit 1
             fi
