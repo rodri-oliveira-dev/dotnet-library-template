@@ -27,6 +27,13 @@ updates:
       time: "09:15"
       timezone: "America/Sao_Paulo"
     open-pull-requests-limit: 2
+    # Keep this .NET 10 template on its current SDK channel until migration is coordinated.
+    # Patch updates remain eligible for Dependabot and the SDK sync workflow.
+    ignore:
+      - dependency-name: "dotnet-sdk"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
     groups:
       dotnet-sdk-dependencies:
         applies-to: "version-updates"

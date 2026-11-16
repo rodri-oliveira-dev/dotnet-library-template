@@ -14,7 +14,7 @@ Major updates should be reviewed as compatibility changes. An automated pull req
 
 ## SDK policy
 
-`global.json` remains the source of truth for the SDK version, roll-forward behavior, and prerelease policy. Dependabot updates that file; it does not override those policies.
+`global.json` remains the source of truth for the SDK version, roll-forward behavior, and prerelease policy. The current template targets .NET 10. Dependabot ignores major/minor `dotnet-sdk` updates until a coordinated SDK migration updates the toolchain and its CI validation; patch updates remain eligible. The SDK sync workflow also manages compatible patch updates.
 
 A generated repository should run its normal CI, CodeQL, Dependency Review, package validation, and any additional project-specific gates on SDK update pull requests before merge.
 
@@ -25,6 +25,7 @@ The existing template validation workflow is the canonical drift gate for this p
 - `.github/dependabot.yml` contains exactly the NuGet, `dotnet-sdk`, and GitHub Actions ecosystems;
 - each ecosystem monitors the repository root on a weekly schedule in `America/Sao_Paulo`;
 - NuGet and GitHub Actions group minor/patch updates while SDK updates remain dedicated pull requests;
+- SDK major/minor updates are ignored until an explicit migration, without applying `update-types` restrictions inside dependency groups;
 - a project generated with `dotnet new rodri-lib` receives the same three-ecosystem baseline;
 - generated `global.json` remains identical to the source template's toolchain policy;
 - this dependency-maintenance policy is included in generated repositories.
