@@ -244,7 +244,10 @@ jobs:
           release='.github/workflows/release.yml'
 
           test -s "$dependency_review"
-          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$dependency_review"
+          if ! grep -Eq '^[[:space:]]*uses:[[:space:]]+actions/dependency-review-action@[0-9a-f]{40}[[:space:]]+# v5(\.[0-9]+){0,2}[[:space:]]*$' "$dependency_review"; then
+            echo "Dependency Review deve usar a versão major 5 pinada por SHA completo."
+            exit 1
+          fi
           grep -Fq 'fail-on-severity: high' "$dependency_review"
           grep -Fq 'contents: read' "$dependency_review"
 
@@ -475,7 +478,11 @@ jobs:
           grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
           grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
-          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          source_dependency_review_ref="$(grep -Eo 'actions/dependency-review-action@[0-9a-f]{40}' .github/workflows/dependency-review.yml)"
+          generated_dependency_review_ref="$(grep -Eo 'actions/dependency-review-action@[0-9a-f]{40}' "$GENERATED_ROOT/.github/workflows/dependency-review.yml")"
+          test -n "$source_dependency_review_ref"
+          test "$source_dependency_review_ref" = "$generated_dependency_review_ref"
+          grep -Eq '^[[:space:]]*uses:[[:space:]]+actions/dependency-review-action@[0-9a-f]{40}[[:space:]]+# v5(\.[0-9]+){0,2}[[:space:]]*$' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
           grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
           grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/release.yml"
