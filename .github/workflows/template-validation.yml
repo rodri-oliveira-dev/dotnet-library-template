@@ -244,7 +244,986 @@ jobs:
           release='.github/workflows/release.yml'
 
           test -s "$dependency_review"
-          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$dependency_review"
+          if ! grep -Eq '^[[:space:]]*uses:[[:space:]]+actions/dependency-review-action@[0-9a-f]{40}[[:space:]]+# v5(\.[0-9]+){0,2}[[:space:]]*
+          grep -Fq 'fail-on-severity: high' "$dependency_review"
+          grep -Fq 'contents: read' "$dependency_review"
+
+          test -s "$release"
+          grep -Fq 'workflow_dispatch:' "$release"
+          grep -Fq 'pull_request:' "$release"
+          grep -Fq 'publish:' "$release"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
+          grep -Fq 'id-token: write' "$release"
+          grep -Fq 'contents: write' "$release"
+          grep -Fq 'release-candidate-' "$release"
+          grep -Fq 'release-manifest.json' "$release"
+          grep -Fq 'SHA256SUMS' "$release"
+          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Preflight release tag' "$release"
+          grep -Fq 'needs.build.outputs.commit' "$release"
+          grep -Fq 'safe-to-publish-library' "$release"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$release"
+          grep -Fq 'vars.NUGET_USER' "$release"
+          grep -Fq -- '--expected-version' "$release"
+
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|1341282709|rodri-oliveira-dev/dotnet-library-template' "$release"; then
+            echo "Workflow de release contém credencial persistente, permissão ou metadado específico do repositório-base."
+            exit 1
+          fi
+
+          unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' .github/workflows \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "Actions sem pin por SHA completo:"
+            echo "$unpinned"
+            exit 1
+          fi
+
+          missing_version_comment="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' .github/workflows \
+            | grep -Ev '# v[0-9]' || true)"
+          if [ -n "$missing_version_comment" ]; then
+            echo "Actions pinadas sem comentario de versao:"
+            echo "$missing_version_comment"
+            exit 1
+          fi
+
+          missing_readonly_checkout="$(
+            for workflow in .github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
+
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
+
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$missing_readonly_checkout" ]; then
+            echo "Checkouts read-only devem declarar persist-credentials:false:"
+            echo "$missing_readonly_checkout"
+            exit 1
+          fi
+
+      - name: Instalar template do checkout
+        run: dotnet new install .
+
+      - name: Confirmar registro do template
+        shell: bash
+        run: |
+          listing="$(dotnet new list rodri-lib)"
+          echo "$listing"
+
+          if [[ "$listing" != *"rodri-lib"* ]]; then
+            echo "Template rodri-lib não foi registrado no dotnet new."
+            exit 1
+          fi
+
+      - name: Gerar biblioteca de validação
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/generated-template/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Verificar estrutura gerada
+        shell: bash
+        run: |
+          required=(
+            "Validation.SampleLibrary.slnx"
+            "Validation.SampleLibrary.code-workspace"
+            "src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+            "src/Validation.SampleLibrary/packages.lock.json"
+            "tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj"
+            "tests/Validation.SampleLibrary.Tests/packages.lock.json"
+            "README.md"
+            "CONTRIBUTING.md"
+            "CODE_OF_CONDUCT.md"
+            "SECURITY.md"
+            "CHANGELOG.md"
+            "AGENTS.md"
+            ".editorconfig"
+            "global.json"
+            ".config/dotnet-tools.json"
+            ".adrguard.yml"
+            "docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md"
+            ".vscode/extensions.json"
+            ".vscode/settings.json"
+            ".vscode/tasks.json"
+            "docs/dependency-maintenance.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
+            ".github/ISSUE_TEMPLATE/bug_report.yml"
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+            ".github/pull_request_template.md"
+            ".github/dependabot.yml"
+            ".github/workflows/ci.yml"
+            ".github/workflows/codeql.yml"
+            ".github/workflows/dependency-review.yml"
+            ".github/workflows/release.yml"
+            "scripts/verify-package.cs"
+          )
+
+          for path in "${required[@]}"; do
+            if [ ! -e "$GENERATED_ROOT/$path" ]; then
+              echo "Arquivo esperado não foi gerado: $path"
+              exit 1
+            fi
+          done
+
+          if [ -e "$GENERATED_ROOT/.github/workflows/validation.yml" ]; then
+            echo "Workflow legado validation.yml não deve existir na saída gerada."
+            exit 1
+          fi
+
+          maintenance_only=(
+            ".template.config/template.json"
+            ".github/workflows/initialize-repository.yml"
+            ".github/workflows/template-validation.yml"
+            ".github/workflows/sonar-template-validation.yml"
+            ".github/workflows/versioning-validation.yml"
+            ".github/workflows/release-publishing-validation.yml"
+            ".github/workflows/github-template-initialization-validation.yml"
+            ".github/workflows/template-package-validation.yml"
+            "packaging/RodriOliveira.DotNet.Library.Template.csproj"
+            "docs/template-development.md"
+            "docs/advanced-reference.md"
+            "docs/advanced-reference.pt-BR.md"
+            "docs/repository-administration.md"
+            "docs/library-readme.md"
+            "README.en.md"
+            "scripts/initialize-repository.sh"
+            "scripts/verify-template-package.cs"
+            "scripts/validate-template-package-e2e.sh"
+          )
+
+          for path in "${maintenance_only[@]}"; do
+            if [ -e "$GENERATED_ROOT/$path" ]; then
+              echo "Conteúdo exclusivo de manutenção vazou para a saída: $path"
+              exit 1
+            fi
+          done
+
+          grep -Fq '# Validation.SampleLibrary' "$GENERATED_ROOT/README.md"
+          grep -Fq 'Directory.Packages.props' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'name: Bug report' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/bug_report.yml"
+          grep -Fq 'name: Feature request' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/feature_request.yml"
+          grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
+          grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "dotnet-sdk"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq '.NET SDK selected by `global.json`' "$GENERATED_ROOT/docs/dependency-maintenance.md"
+          if ! cmp -s global.json "$GENERATED_ROOT/global.json"; then
+            echo "global.json gerado diverge da configuração da raiz:"
+            diff -u global.json "$GENERATED_ROOT/global.json" || true
+            exit 1
+          fi
+          grep -Fq 'csharp_preferred_modifier_order = file,public,protected,internal,private,static,abstract,virtual,override,sealed,readonly,required,extern,new,unsafe,volatile,async:suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1062.severity = warning' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1859.severity = suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'privately report suspected vulnerabilities' "$GENERATED_ROOT/SECURITY.md"
+          grep -Fq 'Validation.SampleLibrary.slnx' "$GENERATED_ROOT/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'rodrioliveira.adrguard' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          expected_adr_guard_version="$(sed -n '/"rodrioliveira.adrguard"/,/}/s/.*"version": "\([^"]*\)".*/\1/p' .config/dotnet-tools.json)"
+          test -n "$expected_adr_guard_version"
+          grep -Fq "\"version\": \"$expected_adr_guard_version\"" "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq '"rollForward": false' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq 'adr-directory: "docs/adr"' "$GENERATED_ROOT/.adrguard.yml"
+          grep -Fq 'rodrioliveira.adr-guard' "$GENERATED_ROOT/.vscode/extensions.json"
+          grep -Fq 'ADR Guard: Check' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'ADR Guard: Index' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          test ! -e "$GENERATED_ROOT/Template.Library.code-workspace"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          source_codeql_init_ref="$(grep -Eo 'github/codeql-action/init@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          source_codeql_analyze_ref="$(grep -Eo 'github/codeql-action/analyze@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          test -n "$source_codeql_init_ref"
+          test -n "$source_codeql_analyze_ref"
+          grep -Fq "$source_codeql_init_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq "$source_codeql_analyze_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'build-mode: manual' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          source_dependency_review_ref="$(grep -E '^[[:space:]]*uses:[[:space:]]+actions/dependency-review-action@[0-9a-f]{40}[[:space:]]+# v5(\.[0-9]+){0,2}[[:space:]]*
+          grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-candidate-' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Preflight release tag' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'scripts/release-candidate.cs' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-manifest.json' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'SHA256SUMS' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Create or resume draft GitHub Release' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'needs.build.outputs.commit' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'NuGet publication is skipped because NUGET_USER is not configured.' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq "needs.build.outputs.nuget-publishing-enabled == 'true'" "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
+
+          if grep -Eq 'RodriOliveira\.DotNet\.Library\.Template|packaging/|template-package-validation|verify-template-package|validate-template-package-e2e|push:' "$GENERATED_ROOT/.github/workflows/release.yml"; then
+            echo "Workflow de release gerado contem detalhe do repositorio-template ou gatilho legado."
+            exit 1
+          fi
+
+          generated_unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' "$GENERATED_ROOT/.github/workflows" \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$generated_unpinned" ]; then
+            echo "Actions sem pin por SHA completo na saida gerada:"
+            echo "$generated_unpinned"
+            exit 1
+          fi
+
+          generated_missing_readonly_checkout="$(
+            for workflow in "$GENERATED_ROOT"/.github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
+
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
+
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$generated_missing_readonly_checkout" ]; then
+            echo "Checkouts read-only da saida gerada devem declarar persist-credentials:false:"
+            echo "$generated_missing_readonly_checkout"
+            exit 1
+          fi
+
+      - name: Inicializar contexto Git da saída
+        shell: bash
+        run: |
+          git -C "$GENERATED_ROOT" init -b main
+          git -C "$GENERATED_ROOT" config user.name "Template Validation"
+          git -C "$GENERATED_ROOT" config user.email "template-validation@example.invalid"
+          git -C "$GENERATED_ROOT" add --all
+          git -C "$GENERATED_ROOT" commit -m "Initial generated library"
+          git -C "$GENERATED_ROOT" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restaurar ferramentas locais da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Validar ADR Guard na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: |
+          dotnet tool list --local
+          dotnet tool run adr-guard -- --version
+          dotnet tool run adr-guard -- check docs/adr
+
+      - name: Restaurar dependências da saída em locked mode
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore --locked-mode
+
+      - name: Verificar politicas MSBuild da saida
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          project="src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+
+          get_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          test "$(get_property AnalysisLevel)" = "10-recommended"
+          test "$(get_property AnalysisLevelSecurity)" = "10-all"
+          test "$(get_property EnforceCodeStyleInBuild)" = "true"
+          test "$(get_property EnablePackageValidation)" = "true"
+          test "$(get_property PackageReadmeFile)" = "README.md"
+
+      - name: Verificar formatação da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Executar testes da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Empacotar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: >-
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Validar pacote e Source Link da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
+
+      - name: Verificar identidade do pacote
+        shell: bash
+        run: |
+          package="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.nupkg"
+          symbols="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.snupkg"
+          test -f "$package"
+          test -f "$symbols"
+
+      - name: Verificar ausência de resíduos
+        shell: bash
+        run: |
+          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template|WebApiCoreSeed|LedgerService|poc-arquitetura|web-api-core-seed'
+          matches="$(grep -R -I -n -E "$forbidden" "$GENERATED_ROOT" \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj \
+            --exclude=SOURCES.md \
+            --exclude-dir=artifacts || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Identidade indevida encontrada na saída gerada:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true
+ "$dependency_review"; then
+            echo "Dependency Review deve usar a versão major 5 pinada por SHA completo."
+            exit 1
+          fi
+          grep -Fq 'fail-on-severity: high' "$dependency_review"
+          grep -Fq 'contents: read' "$dependency_review"
+
+          test -s "$release"
+          grep -Fq 'workflow_dispatch:' "$release"
+          grep -Fq 'pull_request:' "$release"
+          grep -Fq 'publish:' "$release"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$release"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$release"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$release"
+          grep -Fq 'id-token: write' "$release"
+          grep -Fq 'contents: write' "$release"
+          grep -Fq 'release-candidate-' "$release"
+          grep -Fq 'release-manifest.json' "$release"
+          grep -Fq 'SHA256SUMS' "$release"
+          grep -Fq 'Create or resume draft GitHub Release' "$release"
+          grep -Fq 'Preflight release tag' "$release"
+          grep -Fq 'needs.build.outputs.commit' "$release"
+          grep -Fq 'safe-to-publish-library' "$release"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$release"
+          grep -Fq 'vars.NUGET_USER' "$release"
+          grep -Fq -- '--expected-version' "$release"
+
+          if grep -Eq 'secrets\.NUGET_API_KEY|write-all|1341282709|rodri-oliveira-dev/dotnet-library-template' "$release"; then
+            echo "Workflow de release contém credencial persistente, permissão ou metadado específico do repositório-base."
+            exit 1
+          fi
+
+          unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' .github/workflows \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$unpinned" ]; then
+            echo "Actions sem pin por SHA completo:"
+            echo "$unpinned"
+            exit 1
+          fi
+
+          missing_version_comment="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' .github/workflows \
+            | grep -Ev '# v[0-9]' || true)"
+          if [ -n "$missing_version_comment" ]; then
+            echo "Actions pinadas sem comentario de versao:"
+            echo "$missing_version_comment"
+            exit 1
+          fi
+
+          missing_readonly_checkout="$(
+            for workflow in .github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
+
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
+
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$missing_readonly_checkout" ]; then
+            echo "Checkouts read-only devem declarar persist-credentials:false:"
+            echo "$missing_readonly_checkout"
+            exit 1
+          fi
+
+      - name: Instalar template do checkout
+        run: dotnet new install .
+
+      - name: Confirmar registro do template
+        shell: bash
+        run: |
+          listing="$(dotnet new list rodri-lib)"
+          echo "$listing"
+
+          if [[ "$listing" != *"rodri-lib"* ]]; then
+            echo "Template rodri-lib não foi registrado no dotnet new."
+            exit 1
+          fi
+
+      - name: Gerar biblioteca de validação
+        shell: bash
+        run: |
+          generated="$RUNNER_TEMP/generated-template/Validation.SampleLibrary"
+          mkdir -p "$(dirname "$generated")"
+          dotnet new rodri-lib -n Validation.SampleLibrary -o "$generated"
+          echo "GENERATED_ROOT=$generated" >> "$GITHUB_ENV"
+
+      - name: Verificar estrutura gerada
+        shell: bash
+        run: |
+          required=(
+            "Validation.SampleLibrary.slnx"
+            "Validation.SampleLibrary.code-workspace"
+            "src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+            "src/Validation.SampleLibrary/packages.lock.json"
+            "tests/Validation.SampleLibrary.Tests/Validation.SampleLibrary.Tests.csproj"
+            "tests/Validation.SampleLibrary.Tests/packages.lock.json"
+            "README.md"
+            "CONTRIBUTING.md"
+            "CODE_OF_CONDUCT.md"
+            "SECURITY.md"
+            "CHANGELOG.md"
+            "AGENTS.md"
+            ".editorconfig"
+            "global.json"
+            ".config/dotnet-tools.json"
+            ".adrguard.yml"
+            "docs/adr/0001-adopt-adr-guard-for-architecture-decisions.md"
+            ".vscode/extensions.json"
+            ".vscode/settings.json"
+            ".vscode/tasks.json"
+            "docs/dependency-maintenance.md"
+            ".agents/skills/dotnet-library-change/SKILL.md"
+            ".agents/skills/dotnet-refactoring-engineer/SKILL.md"
+            ".agents/skills/coverage-analysis/SKILL.md"
+            ".agents/skills/test-anti-patterns/SKILL.md"
+            ".agents/skills/ci-release-governance/SKILL.md"
+            ".github/ISSUE_TEMPLATE/bug_report.yml"
+            ".github/ISSUE_TEMPLATE/feature_request.yml"
+            ".github/pull_request_template.md"
+            ".github/dependabot.yml"
+            ".github/workflows/ci.yml"
+            ".github/workflows/codeql.yml"
+            ".github/workflows/dependency-review.yml"
+            ".github/workflows/release.yml"
+            "scripts/verify-package.cs"
+          )
+
+          for path in "${required[@]}"; do
+            if [ ! -e "$GENERATED_ROOT/$path" ]; then
+              echo "Arquivo esperado não foi gerado: $path"
+              exit 1
+            fi
+          done
+
+          if [ -e "$GENERATED_ROOT/.github/workflows/validation.yml" ]; then
+            echo "Workflow legado validation.yml não deve existir na saída gerada."
+            exit 1
+          fi
+
+          maintenance_only=(
+            ".template.config/template.json"
+            ".github/workflows/initialize-repository.yml"
+            ".github/workflows/template-validation.yml"
+            ".github/workflows/sonar-template-validation.yml"
+            ".github/workflows/versioning-validation.yml"
+            ".github/workflows/release-publishing-validation.yml"
+            ".github/workflows/github-template-initialization-validation.yml"
+            ".github/workflows/template-package-validation.yml"
+            "packaging/RodriOliveira.DotNet.Library.Template.csproj"
+            "docs/template-development.md"
+            "docs/advanced-reference.md"
+            "docs/advanced-reference.pt-BR.md"
+            "docs/repository-administration.md"
+            "docs/library-readme.md"
+            "README.en.md"
+            "scripts/initialize-repository.sh"
+            "scripts/verify-template-package.cs"
+            "scripts/validate-template-package-e2e.sh"
+          )
+
+          for path in "${maintenance_only[@]}"; do
+            if [ -e "$GENERATED_ROOT/$path" ]; then
+              echo "Conteúdo exclusivo de manutenção vazou para a saída: $path"
+              exit 1
+            fi
+          done
+
+          grep -Fq '# Validation.SampleLibrary' "$GENERATED_ROOT/README.md"
+          grep -Fq 'Directory.Packages.props' "$GENERATED_ROOT/AGENTS.md"
+          grep -Fq 'name: Bug report' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/bug_report.yml"
+          grep -Fq 'name: Feature request' "$GENERATED_ROOT/.github/ISSUE_TEMPLATE/feature_request.yml"
+          grep -Fq 'dotnet build --configuration Release --no-restore' "$GENERATED_ROOT/.github/pull_request_template.md"
+          grep -Fq 'package-ecosystem: "nuget"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "dotnet-sdk"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq 'package-ecosystem: "github-actions"' "$GENERATED_ROOT/.github/dependabot.yml"
+          grep -Fq '.NET SDK selected by `global.json`' "$GENERATED_ROOT/docs/dependency-maintenance.md"
+          if ! cmp -s global.json "$GENERATED_ROOT/global.json"; then
+            echo "global.json gerado diverge da configuração da raiz:"
+            diff -u global.json "$GENERATED_ROOT/global.json" || true
+            exit 1
+          fi
+          grep -Fq 'csharp_preferred_modifier_order = file,public,protected,internal,private,static,abstract,virtual,override,sealed,readonly,required,extern,new,unsafe,volatile,async:suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1062.severity = warning' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'dotnet_diagnostic.CA1859.severity = suggestion' "$GENERATED_ROOT/.editorconfig"
+          grep -Fq 'privately report suspected vulnerabilities' "$GENERATED_ROOT/SECURITY.md"
+          grep -Fq 'Validation.SampleLibrary.slnx' "$GENERATED_ROOT/Validation.SampleLibrary.code-workspace"
+          grep -Fq 'rodrioliveira.adrguard' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          expected_adr_guard_version="$(sed -n '/"rodrioliveira.adrguard"/,/}/s/.*"version": "\([^"]*\)".*/\1/p' .config/dotnet-tools.json)"
+          test -n "$expected_adr_guard_version"
+          grep -Fq "\"version\": \"$expected_adr_guard_version\"" "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq '"rollForward": false' "$GENERATED_ROOT/.config/dotnet-tools.json"
+          grep -Fq 'adr-directory: "docs/adr"' "$GENERATED_ROOT/.adrguard.yml"
+          grep -Fq 'rodrioliveira.adr-guard' "$GENERATED_ROOT/.vscode/extensions.json"
+          grep -Fq 'ADR Guard: Check' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'ADR Guard: Index' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'Workspace: Validate All' "$GENERATED_ROOT/.vscode/tasks.json"
+          grep -Fq 'dotnet tool run adr-guard -- check docs/adr' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          test ! -e "$GENERATED_ROOT/Template.Library.code-workspace"
+          grep -Eq 'actions/upload-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'persist-credentials: false' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          grep -Fq 'cancel-in-progress: true' "$GENERATED_ROOT/.github/workflows/ci.yml"
+          source_codeql_init_ref="$(grep -Eo 'github/codeql-action/init@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          source_codeql_analyze_ref="$(grep -Eo 'github/codeql-action/analyze@[0-9a-f]{40}' .github/workflows/codeql.yml)"
+          test -n "$source_codeql_init_ref"
+          test -n "$source_codeql_analyze_ref"
+          grep -Fq "$source_codeql_init_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq "$source_codeql_analyze_ref # v4" "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'build-mode: manual' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'security-events: write' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx --configuration Release --no-restore' "$GENERATED_ROOT/.github/workflows/codeql.yml"
+          grep -Fq 'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-candidate-' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Preflight release tag' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'scripts/release-candidate.cs' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-manifest.json' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'SHA256SUMS' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Create or resume draft GitHub Release' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'needs.build.outputs.commit' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'NuGet publication is skipped because NUGET_USER is not configured.' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq "needs.build.outputs.nuget-publishing-enabled == 'true'" "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
+
+          if grep -Eq 'RodriOliveira\.DotNet\.Library\.Template|packaging/|template-package-validation|verify-template-package|validate-template-package-e2e|push:' "$GENERATED_ROOT/.github/workflows/release.yml"; then
+            echo "Workflow de release gerado contem detalhe do repositorio-template ou gatilho legado."
+            exit 1
+          fi
+
+          generated_unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' "$GENERATED_ROOT/.github/workflows" \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$generated_unpinned" ]; then
+            echo "Actions sem pin por SHA completo na saida gerada:"
+            echo "$generated_unpinned"
+            exit 1
+          fi
+
+          generated_missing_readonly_checkout="$(
+            for workflow in "$GENERATED_ROOT"/.github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
+
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
+
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$generated_missing_readonly_checkout" ]; then
+            echo "Checkouts read-only da saida gerada devem declarar persist-credentials:false:"
+            echo "$generated_missing_readonly_checkout"
+            exit 1
+          fi
+
+      - name: Inicializar contexto Git da saída
+        shell: bash
+        run: |
+          git -C "$GENERATED_ROOT" init -b main
+          git -C "$GENERATED_ROOT" config user.name "Template Validation"
+          git -C "$GENERATED_ROOT" config user.email "template-validation@example.invalid"
+          git -C "$GENERATED_ROOT" add --all
+          git -C "$GENERATED_ROOT" commit -m "Initial generated library"
+          git -C "$GENERATED_ROOT" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restaurar ferramentas locais da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Validar ADR Guard na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: |
+          dotnet tool list --local
+          dotnet tool run adr-guard -- --version
+          dotnet tool run adr-guard -- check docs/adr
+
+      - name: Restaurar dependências da saída em locked mode
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore --locked-mode
+
+      - name: Verificar politicas MSBuild da saida
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          project="src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+
+          get_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          test "$(get_property AnalysisLevel)" = "10-recommended"
+          test "$(get_property AnalysisLevelSecurity)" = "10-all"
+          test "$(get_property EnforceCodeStyleInBuild)" = "true"
+          test "$(get_property EnablePackageValidation)" = "true"
+          test "$(get_property PackageReadmeFile)" = "README.md"
+
+      - name: Verificar formatação da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Executar testes da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Empacotar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: >-
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Validar pacote e Source Link da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
+
+      - name: Verificar identidade do pacote
+        shell: bash
+        run: |
+          package="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.nupkg"
+          symbols="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.snupkg"
+          test -f "$package"
+          test -f "$symbols"
+
+      - name: Verificar ausência de resíduos
+        shell: bash
+        run: |
+          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template|WebApiCoreSeed|LedgerService|poc-arquitetura|web-api-core-seed'
+          matches="$(grep -R -I -n -E "$forbidden" "$GENERATED_ROOT" \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj \
+            --exclude=SOURCES.md \
+            --exclude-dir=artifacts || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Identidade indevida encontrada na saída gerada:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true
+ .github/workflows/dependency-review.yml)"
+          if ! grep -Fxq "$source_dependency_review_ref" "$GENERATED_ROOT/.github/workflows/dependency-review.yml"; then
+            echo "Dependency Review gerado deve preservar o SHA e a versão do checkout."
+            exit 1
+          fi
+          grep -Fq 'fail-on-severity: high' "$GENERATED_ROOT/.github/workflows/dependency-review.yml"
+          grep -Fq 'NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Eq 'actions/download-artifact@[0-9a-f]{40} # v[0-9]+(\.[0-9]+){0,2}' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'safe-to-publish' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'placeholder_package_id="Template"".""Library"' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet restore Validation.SampleLibrary.slnx --locked-mode' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'dotnet build Validation.SampleLibrary.slnx' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'src/Validation.SampleLibrary/Validation.SampleLibrary.csproj' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-candidate-' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Preflight release tag' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'scripts/release-candidate.cs' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'release-manifest.json' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'SHA256SUMS' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Create or resume draft GitHub Release' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'needs.build.outputs.commit' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'vars.NUGET_USER' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'NuGet publication is skipped because NUGET_USER is not configured.' "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq "needs.build.outputs.nuget-publishing-enabled == 'true'" "$GENERATED_ROOT/.github/workflows/release.yml"
+          grep -Fq 'Trusted Publishing' "$GENERATED_ROOT/README.md"
+
+          if grep -Eq 'RodriOliveira\.DotNet\.Library\.Template|packaging/|template-package-validation|verify-template-package|validate-template-package-e2e|push:' "$GENERATED_ROOT/.github/workflows/release.yml"; then
+            echo "Workflow de release gerado contem detalhe do repositorio-template ou gatilho legado."
+            exit 1
+          fi
+
+          generated_unpinned="$(grep -R -n -E '^[[:space:]]*uses: [^#[:space:]]+@[A-Za-z0-9._-]+' "$GENERATED_ROOT/.github/workflows" \
+            | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true)"
+          if [ -n "$generated_unpinned" ]; then
+            echo "Actions sem pin por SHA completo na saida gerada:"
+            echo "$generated_unpinned"
+            exit 1
+          fi
+
+          generated_missing_readonly_checkout="$(
+            for workflow in "$GENERATED_ROOT"/.github/workflows/*.yml; do
+              awk -v file="$workflow" '
+                function flush() {
+                  if (checkout && !exception && block !~ /persist-credentials:[[:space:]]false/) {
+                    print checkout_line
+                  }
+                }
+
+                /^[[:space:]]*-[[:space:]]name:[[:space:]]*/ {
+                  flush()
+                  block = $0 "\n"
+                  checkout = 0
+                  exception = ($0 ~ /Checkout validated commit/)
+                  next
+                }
+
+                {
+                  block = block $0 "\n"
+                  if ($0 ~ /^[[:space:]]*uses:[[:space:]]actions\/checkout@[0-9a-f]{40}/) {
+                    checkout = 1
+                    checkout_line = file ":" FNR ":" $0
+                  }
+                }
+
+                END {
+                  flush()
+                }
+              ' "$workflow"
+            done
+          )"
+
+          if [ -n "$generated_missing_readonly_checkout" ]; then
+            echo "Checkouts read-only da saida gerada devem declarar persist-credentials:false:"
+            echo "$generated_missing_readonly_checkout"
+            exit 1
+          fi
+
+      - name: Inicializar contexto Git da saída
+        shell: bash
+        run: |
+          git -C "$GENERATED_ROOT" init -b main
+          git -C "$GENERATED_ROOT" config user.name "Template Validation"
+          git -C "$GENERATED_ROOT" config user.email "template-validation@example.invalid"
+          git -C "$GENERATED_ROOT" add --all
+          git -C "$GENERATED_ROOT" commit -m "Initial generated library"
+          git -C "$GENERATED_ROOT" remote add origin https://github.com/example/Validation.SampleLibrary.git
+
+      - name: Restaurar ferramentas locais da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet tool restore
+
+      - name: Validar ADR Guard na saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: |
+          dotnet tool list --local
+          dotnet tool run adr-guard -- --version
+          dotnet tool run adr-guard -- check docs/adr
+
+      - name: Restaurar dependências da saída em locked mode
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet restore --locked-mode
+
+      - name: Verificar politicas MSBuild da saida
+        working-directory: ${{ env.GENERATED_ROOT }}
+        shell: bash
+        run: |
+          project="src/Validation.SampleLibrary/Validation.SampleLibrary.csproj"
+
+          get_property() {
+            dotnet msbuild "$project" -nologo -getProperty:"$1" \
+              | tr -d '\r' \
+              | sed '/^[[:space:]]*$/d' \
+              | tail -n 1
+          }
+
+          test "$(get_property AnalysisLevel)" = "10-recommended"
+          test "$(get_property AnalysisLevelSecurity)" = "10-all"
+          test "$(get_property EnforceCodeStyleInBuild)" = "true"
+          test "$(get_property EnablePackageValidation)" = "true"
+          test "$(get_property PackageReadmeFile)" = "README.md"
+
+      - name: Verificar formatação da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Executar testes da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet test --configuration Release --no-build
+
+      - name: Empacotar saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: >-
+          dotnet pack src/Validation.SampleLibrary/Validation.SampleLibrary.csproj
+          --configuration Release
+          --no-build
+          --output artifacts/packages
+
+      - name: Validar pacote e Source Link da saída
+        working-directory: ${{ env.GENERATED_ROOT }}
+        run: dotnet run --file scripts/verify-package.cs -- artifacts/packages --require-source-link
+
+      - name: Verificar identidade do pacote
+        shell: bash
+        run: |
+          package="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.nupkg"
+          symbols="$GENERATED_ROOT/artifacts/packages/Validation.SampleLibrary.1.0.0.snupkg"
+          test -f "$package"
+          test -f "$symbols"
+
+      - name: Verificar ausência de resíduos
+        shell: bash
+        run: |
+          forbidden='Template\.Library|Dapper\.TypedParameters|DotNetRepoInspector|CrispyWaffle|complexity-analyzers|dotnet-library-template|WebApiCoreSeed|LedgerService|poc-arquitetura|web-api-core-seed'
+          matches="$(grep -R -I -n -E "$forbidden" "$GENERATED_ROOT" \
+            --exclude-dir=.git \
+            --exclude-dir=bin \
+            --exclude-dir=obj \
+            --exclude=SOURCES.md \
+            --exclude-dir=artifacts || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Identidade indevida encontrada na saída gerada:"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Desinstalar template
+        if: always()
+        run: dotnet new uninstall "$GITHUB_WORKSPACE" || true
+ "$dependency_review"; then
+            echo "Dependency Review deve usar a versão major 5 pinada por SHA completo."
+            exit 1
+          fi
           grep -Fq 'fail-on-severity: high' "$dependency_review"
           grep -Fq 'contents: read' "$dependency_review"
 
